@@ -3,12 +3,14 @@
 import logging
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import Config, get_resource_path
-from app.routes import api, pages
+from app.routes import api
 from app.services.plex_client import PlexClient
 from app.services.task_manager import TaskManager
 
@@ -64,12 +66,22 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.state.plex_client = plex_client
     app.state.task_manager = TaskManager(plex_client, config)
 
-    # Mount static files
+    # Include API router first (takes priority over static/SPA)
+    app.include_router(api.router)
+
+    # Mount static files (CSS, JS, images, and built SPA assets)
     static_path = get_resource_path("app/static")
     app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
-    # Include routers
-    app.include_router(api.router)
-    app.include_router(pages.router)
+    # SPA catch-all: serve the Vue app's index.html for any non-API,
+    # non-static route so that Vue Router handles client-side routing.
+    spa_index = Path(static_path) / "spa" / "index.html"
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        if spa_index.exists():
+            return FileResponse(spa_index)
+        # Fallback: if SPA not built yet, return a helpful message
+        return {"error": "SPA not built. Run 'npm run build' in the frontend/ directory."}
 
     return app

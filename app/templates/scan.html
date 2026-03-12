@@ -182,22 +182,19 @@
     </p>
 
     <!-- Poster Info Modal -->
-    <template x-teleport="body">
-        <div class="modal-overlay" x-show="modalOpen" @click.self="modalOpen = false"
-             @keydown.escape.window="modalOpen = false"
-             x-transition.opacity>
-            <div class="modal" @click.stop>
-                <div class="modal-header">
-                    <h3 x-text="modalTitle"></h3>
-                    <button class="modal-close" @click="modalOpen = false">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <div x-show="modalLoading" class="text-muted">Loading...</div>
-                    <pre x-show="!modalLoading" class="modal-json" x-text="modalJson"></pre>
-                </div>
+    <div class="modal-overlay" x-cloak x-show="modalOpen" @click.self="modalOpen = false"
+         @keydown.escape.window="modalOpen = false">
+        <div class="modal" @click.stop>
+            <div class="modal-header">
+                <h3 x-text="modalTitle"></h3>
+                <button class="modal-close" @click="modalOpen = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div x-show="modalLoading" class="text-muted">Loading...</div>
+                <pre x-show="!modalLoading" class="modal-json" x-text="modalJson"></pre>
             </div>
         </div>
-    </template>
+    </div>
 </div>
 
 <script>

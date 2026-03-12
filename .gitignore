@@ -12,6 +12,7 @@ build/
 *.spec.bak
 data/config.toml
 data/config.enc
+data/scans/
 !data/config.toml.example
 .env
 *.log

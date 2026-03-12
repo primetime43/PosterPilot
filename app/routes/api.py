@@ -345,6 +345,18 @@ async def list_jobs(request: Request):
     }
 
 
+@router.delete("/jobs/{job_id}")
+async def delete_job(request: Request, job_id: str):
+    """Delete a scan job and its cache."""
+    task_mgr = request.app.state.task_manager
+    if task_mgr.delete_job(job_id):
+        return {"deleted": True}
+    return JSONResponse(
+        status_code=400,
+        content={"error": "Job not found or still running"},
+    )
+
+
 @router.get("/item/{rating_key}/posters")
 async def get_item_posters(request: Request, rating_key: str):
     """Debug endpoint: return raw poster data for a specific item.
