@@ -11,6 +11,7 @@ Automatic poster management for Plex. Scans your libraries, scores available pos
 - **Dry-run mode** — see what would change before applying anything
 - **Live progress** — background scanning and applying with real-time progress bars
 - **Configurable** — adjust scoring weights, provider priority, and filtering from the UI
+- **Encrypted secrets** — Plex tokens and server URLs are stored encrypted on disk, never in plaintext
 - **Dark theme UI**
 
 ## Getting Started
@@ -52,7 +53,7 @@ Run `build.bat` to build a standalone EXE with PyInstaller. The EXE launches the
 
 ## Configuration
 
-All settings are configurable from the **Settings** page in the UI. Config is saved to `data/config.toml`.
+All settings are configurable from the **Settings** page in the UI. Non-sensitive settings are saved to `data/config.toml`. Sensitive data (Plex token, server URL) is encrypted using Fernet (AES-128-CBC + HMAC-SHA256) and stored in `data/config.enc`. The encryption key is derived from your machine's identity — no key files to manage.
 
 For Docker, you can also use environment variables:
 

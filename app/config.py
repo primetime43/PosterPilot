@@ -2,6 +2,10 @@
 
 Supports loading from TOML config file and environment variables.
 Environment variables override config file values.
+
+Sensitive values (Plex token) are stored in an encrypted file
+(data/config.enc) using machine-derived Fernet encryption.
+Non-sensitive settings remain in plain TOML (data/config.toml).
 """
 
 import json
@@ -82,11 +86,12 @@ class Config(BaseModel):
 
     @classmethod
     def load(cls, config_path: Optional[Path] = None) -> "Config":
-        """Load config from TOML file, then overlay environment variables."""
+        """Load config from TOML file + encrypted store, then overlay env vars."""
         data: dict = {}
         if config_path is None:
             config_path = get_data_dir() / "config.toml"
 
+        # Load non-sensitive settings from TOML
         if config_path.exists():
             try:
                 import tomllib
@@ -97,7 +102,16 @@ class Config(BaseModel):
 
         config = cls.model_validate(data)
 
-        # Environment variable overrides
+        # Load sensitive values from encrypted store
+        from app.services.config_store import load as load_secrets
+
+        secrets = load_secrets()
+        if secrets.get("plex_token"):
+            config.plex.token = secrets["plex_token"]
+        if secrets.get("plex_base_url"):
+            config.plex.base_url = secrets["plex_base_url"]
+
+        # Environment variable overrides (highest priority)
         env_map = {
             "PLEX_URL": ("plex", "base_url"),
             "PLEX_TOKEN": ("plex", "token"),
@@ -124,12 +138,25 @@ class Config(BaseModel):
         return config
 
     def save(self, config_path: Optional[Path] = None) -> None:
-        """Save config to TOML file."""
+        """Save config: sensitive values to encrypted store, rest to TOML."""
         if config_path is None:
             config_path = get_data_dir() / "config.toml"
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # Save sensitive values to encrypted store
+        from app.services.config_store import save as save_secrets, load as load_secrets
+
+        secrets = load_secrets()
+        secrets["plex_token"] = self.plex.token
+        secrets["plex_base_url"] = self.plex.base_url
+        save_secrets(secrets)
+
+        # Save non-sensitive settings to TOML (exclude secrets)
         data = self.model_dump()
+        # Remove sensitive fields from TOML output
+        data["plex"].pop("token", None)
+        data["plex"].pop("base_url", None)
+
         lines: list[str] = []
         for section, values in data.items():
             lines.append(f"[{section}]")

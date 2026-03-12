@@ -12,6 +12,7 @@ dependencies = [
     "httpx>=0.27",
     "Pillow>=10.0",
     "pydantic>=2.0",
+    "cryptography>=42.0",
     "tomli>=2.0; python_version < '3.11'",
 ]
 
