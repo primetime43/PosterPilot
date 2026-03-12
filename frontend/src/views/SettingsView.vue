@@ -159,7 +159,7 @@
       </div>
     </div>
 
-    <div class="card-actions">
+    <div class="card-actions" style="margin: 20px 0">
       <button class="btn btn-primary" @click="save" :disabled="saving">
         {{ saving ? 'Saving...' : 'Save Settings' }}
       </button>
