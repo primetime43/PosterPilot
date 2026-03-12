@@ -95,6 +95,11 @@
                 :disabled="applying || unappliedChanges === 0">
           Dry Run All
         </button>
+        <button class="btn btn-outline" @click="selectAll">Select All</button>
+        <button class="btn btn-outline" @click="deselectAll"
+                :disabled="selectedItems.length === 0">
+          Deselect All
+        </button>
         <button class="btn btn-outline" @click="exportResults">Export JSON</button>
       </div>
 
@@ -303,6 +308,16 @@ function toggleSelect(key) {
   } else {
     selectedItems.value.push(key)
   }
+}
+
+function selectAll() {
+  selectedItems.value = filteredItems.value
+    .filter((i) => i.action === 'change' && !i.applied)
+    .map((i) => i.rating_key)
+}
+
+function deselectAll() {
+  selectedItems.value = []
 }
 
 async function applyAll(dryRun) {
