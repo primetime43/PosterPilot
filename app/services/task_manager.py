@@ -11,7 +11,7 @@ import json
 import logging
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -169,6 +169,7 @@ class TaskManager:
         self._lock = threading.Lock()
         self._cache_dir = _get_cache_dir()
         self._load_cached_jobs()
+        self._cleanup_old_jobs()
 
     # ── Cache ─────────────────────────────────────────────
 
@@ -185,6 +186,30 @@ class TaskManager:
                 logger.warning("Failed to load cached job %s: %s", path.name, e)
         if loaded:
             logger.info("Loaded %d cached scan jobs", loaded)
+
+    def _cleanup_old_jobs(self) -> None:
+        """Auto-delete cached scan jobs older than the configured retention period."""
+        max_days = self._config.app.scan_retention_days
+        if max_days <= 0:
+            return
+        cutoff = datetime.now(timezone.utc) - timedelta(days=max_days)
+        removed = 0
+        with self._lock:
+            to_remove = [
+                job_id
+                for job_id, job in self._jobs.items()
+                if job.status != ScanStatus.SCANNING
+                and job.completed_at is not None
+                and job.completed_at < cutoff
+            ]
+            for job_id in to_remove:
+                del self._jobs[job_id]
+                self._delete_job_cache(job_id)
+                removed += 1
+        if removed:
+            logger.info(
+                "Cleaned up %d scan jobs older than %d days", removed, max_days
+            )
 
     def _save_job_cache(self, job: ScanJob) -> None:
         """Save a completed scan job to disk."""

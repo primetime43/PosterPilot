@@ -64,6 +64,13 @@
           <input type="checkbox" v-model="config.app.log_auto_refresh" /> Auto-refresh logs page
         </label>
       </div>
+      <div class="form-row" style="margin-top: 12px">
+        <div class="form-group" style="max-width: 200px">
+          <label>Scan retention (days)</label>
+          <input type="number" v-model.number="config.app.scan_retention_days" min="1" max="365" />
+          <small class="text-muted">Auto-delete cached scans older than this</small>
+        </div>
+      </div>
     </div>
 
     <!-- Scoring Settings -->
@@ -220,6 +227,7 @@ const config = reactive({
     log_level: 'INFO',
     cache_thumbnails: false,
     cache_max_age_days: 7,
+    scan_retention_days: 30,
     whitelisted_libraries: [],
     blacklisted_libraries: [],
   },

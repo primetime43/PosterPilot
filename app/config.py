@@ -78,6 +78,7 @@ class AppConfig(BaseModel):
     open_browser: bool = True
     cache_thumbnails: bool = False
     cache_max_age_days: int = 7
+    scan_retention_days: int = 30
     whitelisted_libraries: list[str] = Field(default_factory=list)
     blacklisted_libraries: list[str] = Field(default_factory=list)
 
