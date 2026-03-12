@@ -76,6 +76,8 @@ class AppConfig(BaseModel):
     log_auto_refresh: bool = False
     log_level: str = "INFO"
     open_browser: bool = True
+    cache_thumbnails: bool = False
+    cache_max_age_days: int = 7
     whitelisted_libraries: list[str] = Field(default_factory=list)
     blacklisted_libraries: list[str] = Field(default_factory=list)
 

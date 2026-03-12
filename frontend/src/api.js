@@ -95,4 +95,10 @@ export default {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  // Thumbnail cache
+  getCacheStats: () => request('/cache/stats'),
+  clearCache: () => request('/cache/clear', { method: 'POST' }),
+  thumbnailUrl: (originalUrl) =>
+    `${BASE}/thumbnail?url=${encodeURIComponent(originalUrl)}`,
 }

@@ -128,6 +128,30 @@
       </div>
     </div>
 
+    <!-- Thumbnail Cache -->
+    <div class="card">
+      <h3>Thumbnail Cache</h3>
+      <p class="text-muted" style="margin-bottom: 12px; font-size: 0.85rem">
+        Cache poster thumbnails locally to reduce Plex API load when viewing scan results repeatedly.
+      </p>
+      <label class="toggle-label">
+        <input type="checkbox" v-model="config.app.cache_thumbnails" /> Enable thumbnail caching
+      </label>
+      <div class="form-group" style="margin-top: 12px; max-width: 200px">
+        <label>Cache expiry (days)</label>
+        <input type="number" v-model.number="config.app.cache_max_age_days" min="1" max="365" />
+      </div>
+      <div v-if="cacheStats" class="cache-stats">
+        <span>{{ cacheStats.count }} files</span>
+        <span class="text-muted">&middot;</span>
+        <span>{{ cacheStats.size_mb }} MB</span>
+        <button v-if="cacheStats.count > 0" class="btn btn-outline btn-sm" @click="clearThumbnailCache"
+                style="margin-left: 12px; color: var(--error); border-color: var(--error);">
+          Clear Cache
+        </button>
+      </div>
+    </div>
+
     <div class="card-actions">
       <button class="btn btn-primary" @click="save" :disabled="saving">
         {{ saving ? 'Saving...' : 'Save Settings' }}
@@ -194,6 +218,8 @@ const config = reactive({
     force_replace: false,
     log_auto_refresh: false,
     log_level: 'INFO',
+    cache_thumbnails: false,
+    cache_max_age_days: 7,
     whitelisted_libraries: [],
     blacklisted_libraries: [],
   },
@@ -204,6 +230,9 @@ const providerPriorityStr = ref('')
 const whitelistStr = ref('')
 const blacklistStr = ref('')
 const saving = ref(false)
+
+// Thumbnail cache
+const cacheStats = ref(null)
 
 // Ignore list
 const ignoreItems = ref([])
@@ -222,6 +251,7 @@ onMounted(async () => {
     console.error('Failed to load config:', e)
   }
   await loadIgnoreList()
+  await loadCacheStats()
 })
 
 async function save() {
@@ -250,6 +280,22 @@ async function save() {
     toast.error('Failed to save: ' + e.message)
   }
   saving.value = false
+}
+
+async function loadCacheStats() {
+  try {
+    cacheStats.value = await api.getCacheStats()
+  } catch {}
+}
+
+async function clearThumbnailCache() {
+  try {
+    await api.clearCache()
+    toast.info('Thumbnail cache cleared')
+    await loadCacheStats()
+  } catch (e) {
+    toast.error('Failed to clear cache: ' + e.message)
+  }
 }
 
 async function loadIgnoreList() {

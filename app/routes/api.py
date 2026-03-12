@@ -13,7 +13,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.models import ItemAction
 
@@ -613,3 +613,59 @@ async def clear_ignore_list(request: Request):
     ignore = request.app.state.ignore_list
     ignore.clear()
     return {"cleared": True}
+
+
+# ── Thumbnail Cache ─────────────────────────────────────
+
+
+@router.get("/thumbnail")
+async def get_thumbnail(request: Request, url: str = ""):
+    """Proxy and cache a poster thumbnail image.
+
+    When thumbnail caching is enabled, downloads the image from Plex
+    on first request and serves from local cache on subsequent requests.
+    When disabled, redirects to the original URL.
+    """
+    if not url:
+        return JSONResponse(status_code=400, content={"error": "No URL provided"})
+
+    config = request.app.state.config
+    if not config.app.cache_thumbnails:
+        # Caching disabled — redirect to original
+        from fastapi.responses import RedirectResponse
+
+        return RedirectResponse(url=url)
+
+    cache = request.app.state.thumbnail_cache
+    path = cache.get_or_download(url)
+
+    if path and path.exists():
+        # Determine media type
+        suffix = path.suffix.lower()
+        media_types = {".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+        media_type = media_types.get(suffix, "image/jpeg")
+        return FileResponse(
+            path,
+            media_type=media_type,
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    # Failed to cache — redirect to original
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url=url)
+
+
+@router.get("/cache/stats")
+async def cache_stats(request: Request):
+    """Get thumbnail cache statistics."""
+    cache = request.app.state.thumbnail_cache
+    return cache.stats()
+
+
+@router.post("/cache/clear")
+async def clear_cache(request: Request):
+    """Clear all cached thumbnails."""
+    cache = request.app.state.thumbnail_cache
+    count = cache.clear()
+    return {"cleared": count}

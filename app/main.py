@@ -15,6 +15,7 @@ from app.routes import api
 from app.services.ignore_list import IgnoreList
 from app.services.plex_client import PlexClient
 from app.services.task_manager import TaskManager
+from app.services.thumbnail_cache import ThumbnailCache
 
 # Module-level log file path so the API can read it
 LOG_FILE: Path | None = None
@@ -80,6 +81,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.state.config = config
     app.state.plex_client = plex_client
     app.state.ignore_list = IgnoreList()
+    app.state.thumbnail_cache = ThumbnailCache(config)
     app.state.task_manager = TaskManager(plex_client, config, app.state.ignore_list)
 
     # Include API router first (takes priority over static/SPA)

@@ -168,7 +168,7 @@
         <div class="poster-compare">
           <div class="poster-slot">
             <p class="poster-label">Current</p>
-            <img v-if="item.current_poster_url" :src="item.current_poster_url" alt="Current poster"
+            <img v-if="item.current_poster_url" :src="thumbSrc(item.current_poster_url)" alt="Current poster"
                  class="poster-thumb" loading="lazy" @error="($event.target.style.display = 'none')" />
             <div v-else class="poster-placeholder">No image</div>
             <div class="poster-details">
@@ -179,7 +179,7 @@
           <div v-if="item.best_candidate_url && item.action === 'change'" class="poster-arrow">&#8594;</div>
           <div v-if="item.best_candidate_url" class="poster-slot">
             <p class="poster-label">Recommended</p>
-            <img :src="item.best_candidate_url" alt="Recommended poster"
+            <img :src="thumbSrc(item.best_candidate_url)" alt="Recommended poster"
                  class="poster-thumb" loading="lazy" @error="($event.target.style.display = 'none')" />
             <div class="poster-details">
               <span class="poster-score poster-score-better">{{ item.best_candidate_score?.toFixed(1) }}</span>
@@ -242,7 +242,7 @@
           <div class="picker-grid">
             <div v-for="c in pickerItem?.all_candidates || []" :key="c.rating_key"
                  class="picker-card" :class="{ 'picker-selected': c.selected, 'picker-best': c.rating_key === pickerItem?.best_candidate_key }">
-              <img :src="c.thumb_url" alt="Poster" class="picker-thumb" loading="lazy"
+              <img :src="thumbSrc(c.thumb_url)" alt="Poster" class="picker-thumb" loading="lazy"
                    @error="($event.target.style.display = 'none')" />
               <div class="picker-info">
                 <div class="picker-score">{{ c.score?.toFixed(1) }}</div>
@@ -315,6 +315,15 @@ const toast = useToast()
 
 const route = useRoute()
 
+// Thumbnail caching
+const cacheThumbnails = ref(false)
+
+function thumbSrc(url) {
+  if (!url) return ''
+  if (cacheThumbnails.value) return api.thumbnailUrl(url)
+  return url
+}
+
 // Re-load when the route query changes (e.g. navigating back from dashboard with a new job_id)
 watch(
   () => route.query.job_id,
@@ -371,7 +380,11 @@ const modalTitle = ref('')
 const modalJson = ref('')
 const modalLoading = ref(false)
 
-onMounted(() => {
+onMounted(async () => {
+  try {
+    const cfg = await api.getConfig()
+    cacheThumbnails.value = cfg?.app?.cache_thumbnails || false
+  } catch {}
   loadInitial()
 })
 
