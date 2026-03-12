@@ -979,10 +979,18 @@ h3 {
 
 /* Server accordion */
 .accordion-arrow {
-    font-size: 1rem;
-    color: var(--text-muted);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
     transition: transform 0.2s;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    flex-shrink: 0;
 }
 
 .accordion-arrow.accordion-open {

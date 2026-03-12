@@ -96,40 +96,13 @@
     </div>
 
     <!-- Connected Status -->
-    <div v-if="connection.connected" class="card server-accordion">
-      <div class="card-header" style="cursor: pointer" @click="serverExpanded = !serverExpanded">
-        <div style="display: flex; align-items: center; gap: 10px">
-          <span class="accordion-arrow" :class="{ 'accordion-open': serverExpanded }">&#9656;</span>
-          <div>
-            <h3 style="margin: 0">Connected to {{ connection.serverName }}</h3>
-            <p class="text-muted text-xs" style="margin-top: 2px">{{ connection.serverVersion }}</p>
-          </div>
+    <div v-if="connection.connected" class="card">
+      <div class="card-header">
+        <div>
+          <h3 style="margin: 0">Connected to {{ connection.serverName }}</h3>
+          <p class="text-muted text-xs" style="margin-top: 2px">{{ connection.serverVersion }}</p>
         </div>
-        <button class="btn btn-sm btn-outline" @click.stop="disconnect">Disconnect</button>
-      </div>
-      <div v-if="serverExpanded" class="server-details">
-        <div class="server-details-grid">
-          <div class="server-detail" v-if="connection.host">
-            <span class="server-detail-label">URL</span>
-            <span class="server-detail-value">{{ connection.host }}</span>
-          </div>
-          <div class="server-detail" v-if="connection.platform">
-            <span class="server-detail-label">Platform</span>
-            <span class="server-detail-value">{{ connection.platform }}{{ connection.platformVersion ? ' ' + connection.platformVersion : '' }}</span>
-          </div>
-          <div class="server-detail">
-            <span class="server-detail-label">Version</span>
-            <span class="server-detail-value">{{ connection.serverVersion }}</span>
-          </div>
-          <div class="server-detail" v-if="connection.libraryCount">
-            <span class="server-detail-label">Libraries</span>
-            <span class="server-detail-value">{{ connection.libraryCount }}</span>
-          </div>
-          <div class="server-detail" v-if="connection.machineId">
-            <span class="server-detail-label">Machine ID</span>
-            <span class="server-detail-value" style="font-family: monospace; font-size: 0.75rem">{{ connection.machineId }}</span>
-          </div>
-        </div>
+        <button class="btn btn-sm btn-outline" @click="disconnect">Disconnect</button>
       </div>
     </div>
 
@@ -224,9 +197,6 @@ const toast = useToast()
 const { state: scanState, startPolling: startScanPolling, checkForActive } = useScanProgress()
 
 const { state: connection, setConnected, setDisconnected, checkStatus } = useConnection()
-
-// Server accordion
-const serverExpanded = ref(false)
 
 // Manual login
 const showManual = ref(false)
