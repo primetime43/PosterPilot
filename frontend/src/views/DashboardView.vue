@@ -191,6 +191,9 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import api from '../api.js'
 import { useConnection } from '../composables/useConnection.js'
+import { useToast } from '../composables/useToast.js'
+
+const toast = useToast()
 
 const { state: connection, setConnected, setDisconnected, checkStatus } = useConnection()
 
@@ -310,6 +313,7 @@ async function connectToServer(srv) {
     if (data.connected) {
       setConnected(data.server_name, data.version)
       serverPickerActive.value = false
+      toast.success(`Connected to ${data.server_name}`)
       await loadLibraries()
     } else {
       connectionError.value = data.error
@@ -327,6 +331,7 @@ async function connectManual() {
     const data = await api.connectManual(plexUrl.value, plexToken.value)
     if (data.connected) {
       setConnected(data.server_name, data.version)
+      toast.success(`Connected to ${data.server_name}`)
       await loadLibraries()
     } else {
       connectionError.value = data.error
@@ -389,6 +394,11 @@ function pollScanStatus(jobId) {
       if (data.status === 'complete' || data.status === 'failed') {
         clearInterval(scanPollInterval)
         scanPollInterval = null
+        if (data.status === 'complete') {
+          toast.success(`Scan complete: ${data.changes} changes found`)
+        } else {
+          toast.error(`Scan failed: ${data.error || 'Unknown error'}`)
+        }
         await loadJobs()
       }
     } catch {

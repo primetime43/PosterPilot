@@ -120,10 +120,6 @@
         </div>
       </div>
 
-      <div v-if="applyResult" class="alert" :class="applyResult.success ? 'alert-success' : 'alert-error'"
-           style="margin-top: 12px">
-        {{ applyResult.message }}
-      </div>
     </div>
 
     <!-- Results Grid -->
@@ -198,6 +194,9 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '../api.js'
+import { useToast } from '../composables/useToast.js'
+
+const toast = useToast()
 
 const route = useRoute()
 
@@ -216,7 +215,6 @@ const searchQuery = ref('')
 const filterAction = ref('all')
 const selectedItems = ref([])
 const applying = ref(false)
-const applyResult = ref(null)
 const applyProgress = ref({ total: 0, processed: 0, pct: 0, applied: 0, failed: 0 })
 let applyPollInterval = null
 
@@ -330,18 +328,17 @@ async function applySelected(dryRun) {
 
 async function _startApply(body) {
   applying.value = true
-  applyResult.value = null
   applyProgress.value = { total: 0, processed: 0, pct: 0, applied: 0, failed: 0 }
   try {
     const data = await api.startApply(job.value.job_id, body.dry_run, body.item_keys || null)
     if (data.error) {
-      applyResult.value = { success: false, message: data.error }
+      toast.error(data.error)
       applying.value = false
       return
     }
     _pollApply(data.apply_id, body.dry_run)
   } catch (e) {
-    applyResult.value = { success: false, message: 'Apply failed: ' + e.message }
+    toast.error('Apply failed: ' + e.message)
     applying.value = false
   }
 }
@@ -363,24 +360,21 @@ function _pollApply(applyId, dryRun) {
         applyPollInterval = null
         applying.value = false
         if (data.status === 'complete') {
-          applyResult.value = {
-            success: true,
-            message: dryRun
-              ? `Dry run complete: ${data.applied_count} items would be changed`
-              : `Done! Applied ${data.applied_count} changes, ${data.failed_count} failed`,
-          }
-          if (!dryRun) {
+          if (dryRun) {
+            toast.info(`Dry run complete: ${data.applied_count} items would be changed`)
+          } else {
+            toast.success(`Applied ${data.applied_count} changes, ${data.failed_count} failed`)
             await loadJob(job.value.job_id)
           }
         } else {
-          applyResult.value = { success: false, message: data.error || 'Apply failed' }
+          toast.error(data.error || 'Apply failed')
         }
       }
     } catch {
       clearInterval(applyPollInterval)
       applyPollInterval = null
       applying.value = false
-      applyResult.value = { success: false, message: 'Lost connection to apply job' }
+      toast.error('Lost connection to apply job')
     }
   }, 500)
 }

@@ -132,7 +132,6 @@
       <button class="btn btn-primary" @click="save" :disabled="saving">
         {{ saving ? 'Saving...' : 'Save Settings' }}
       </button>
-      <span v-if="saveMessage" class="text-success">{{ saveMessage }}</span>
     </div>
   </div>
 </template>
@@ -140,6 +139,9 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import api from '../api.js'
+import { useToast } from '../composables/useToast.js'
+
+const toast = useToast()
 
 const config = reactive({
   plex: { base_url: '', token: '', timeout: 30 },
@@ -174,7 +176,6 @@ const providerPriorityStr = ref('')
 const whitelistStr = ref('')
 const blacklistStr = ref('')
 const saving = ref(false)
-const saveMessage = ref('')
 
 onMounted(async () => {
   try {
@@ -193,7 +194,6 @@ onMounted(async () => {
 
 async function save() {
   saving.value = true
-  saveMessage.value = ''
 
   config.scoring.provider_priority = providerPriorityStr.value
     .split(',')
@@ -213,10 +213,9 @@ async function save() {
       scoring: config.scoring,
       app: config.app,
     })
-    saveMessage.value = 'Settings saved!'
-    setTimeout(() => (saveMessage.value = ''), 3000)
+    toast.success('Settings saved!')
   } catch (e) {
-    saveMessage.value = 'Failed to save: ' + e.message
+    toast.error('Failed to save: ' + e.message)
   }
   saving.value = false
 }

@@ -40,6 +40,9 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import api from '../api.js'
+import { useToast } from '../composables/useToast.js'
+
+const toast = useToast()
 
 const lines = ref([])
 const total = ref(0)
@@ -84,8 +87,9 @@ async function clearLogs() {
     await api.clearLogs()
     lines.value = []
     total.value = 0
+    toast.success('Logs cleared')
   } catch (e) {
-    console.error('Failed to clear logs:', e)
+    toast.error('Failed to clear logs')
   }
 }
 
