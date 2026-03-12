@@ -102,6 +102,35 @@ body {
     border-right: 3px solid var(--accent);
 }
 
+/* Sidebar scan progress */
+.sidebar-scan {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+    margin-top: auto;
+}
+
+.sidebar-scan-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+    letter-spacing: 0.03em;
+}
+
+.sidebar-scan-title {
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+}
+
+.sidebar-scan-stats {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
 .sidebar-footer {
     padding: 16px 20px;
     border-top: 1px solid var(--border);

@@ -192,8 +192,10 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import api from '../api.js'
 import { useConnection } from '../composables/useConnection.js'
 import { useToast } from '../composables/useToast.js'
+import { useScanProgress } from '../composables/useScanProgress.js'
 
 const toast = useToast()
+const scanProgress = useScanProgress()
 
 const { state: connection, setConnected, setDisconnected, checkStatus } = useConnection()
 
@@ -379,6 +381,7 @@ async function startScan(lib, forceRefresh = false) {
       processed_items: 0,
       total_items: 0,
     }
+    scanProgress.startPolling(data.job_id, lib.title)
     pollScanStatus(data.job_id)
   } catch (e) {
     console.error('Failed to start scan:', e)
