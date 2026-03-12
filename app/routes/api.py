@@ -344,9 +344,6 @@ async def get_config(request: Request):
     """Get current configuration."""
     config = request.app.state.config
     data = config.model_dump()
-    # Mask the token for security
-    if data.get("plex", {}).get("token"):
-        data["plex"]["token"] = "***" + data["plex"]["token"][-4:]
     return data
 
 

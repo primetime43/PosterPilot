@@ -13,9 +13,17 @@
                 <label>Server URL</label>
                 <input type="text" x-model="config.plex.base_url" placeholder="http://localhost:32400">
             </div>
-            <div class="form-group">
+            <div class="form-group" x-data="{showToken: false}">
                 <label>Token</label>
-                <input type="password" x-model="config.plex.token" placeholder="Plex token">
+                <div style="position: relative;">
+                    <input :type="showToken ? 'text' : 'password'" x-model="config.plex.token"
+                           placeholder="Plex token" style="padding-right: 40px;">
+                    <button type="button" class="token-toggle" @click="showToken = !showToken"
+                            :title="showToken ? 'Hide token' : 'Show token'">
+                        <span x-show="!showToken">Show</span>
+                        <span x-show="showToken">Hide</span>
+                    </button>
+                </div>
             </div>
             <div class="form-group">
                 <label>Timeout (seconds)</label>
