@@ -76,7 +76,7 @@
       <div class="legend">
         <span class="legend-item"><span class="badge badge-change">Change</span> A better poster was found</span>
         <span class="legend-item"><span class="badge badge-uploaded">Uploaded</span> Poster uploaded by Kometa or manually</span>
-        <span class="legend-item"><span class="badge badge-broken">Broken</span> Poster appears missing or corrupt</span>
+        <span class="legend-item"><span class="badge badge-broken">Broken</span> Poster missing or corrupt (often from stale Kometa uploads)</span>
         <span class="legend-item"><span class="badge badge-locked">Locked</span> Poster field is locked in Plex</span>
         <span class="legend-item"><span class="badge badge-skip">Skip</span> Current poster is already the best</span>
         <span class="legend-item"><span class="badge badge-no_alternatives">No Alts</span> No other posters available</span>

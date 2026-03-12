@@ -60,6 +60,9 @@
         <label class="toggle-label">
           <input type="checkbox" v-model="config.app.force_replace" /> Force replace existing posters
         </label>
+        <label class="toggle-label">
+          <input type="checkbox" v-model="config.app.log_auto_refresh" /> Auto-refresh logs page
+        </label>
       </div>
     </div>
 
@@ -159,6 +162,7 @@ const config = reactive({
     dry_run: true,
     skip_locked: true,
     force_replace: false,
+    log_auto_refresh: false,
     log_level: 'INFO',
     whitelisted_libraries: [],
     blacklisted_libraries: [],

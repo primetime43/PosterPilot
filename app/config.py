@@ -73,6 +73,7 @@ class AppConfig(BaseModel):
     dry_run: bool = True
     skip_locked: bool = True
     force_replace: bool = False
+    log_auto_refresh: bool = False
     log_level: str = "INFO"
     open_browser: bool = True
     whitelisted_libraries: list[str] = Field(default_factory=list)

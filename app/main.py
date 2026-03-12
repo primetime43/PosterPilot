@@ -1,6 +1,7 @@
 """FastAPI application factory for PosterPilot."""
 
 import logging
+import logging.handlers
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -9,19 +10,32 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.config import Config, get_resource_path
+from app.config import Config, get_data_dir, get_resource_path
 from app.routes import api
 from app.services.plex_client import PlexClient
 from app.services.task_manager import TaskManager
 
+# Module-level log file path so the API can read it
+LOG_FILE: Path | None = None
+
 
 def setup_logging(level: str = "INFO") -> None:
-    """Configure structured logging."""
+    """Configure structured logging to stdout and a rotating file."""
+    global LOG_FILE
     log_format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    log_level = getattr(logging, level.upper(), logging.INFO)
+
+    LOG_FILE = get_data_dir() / "posterpilot.log"
+
+    file_handler = logging.handlers.RotatingFileHandler(
+        LOG_FILE, maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8"
+    )
+    file_handler.setFormatter(logging.Formatter(log_format))
+
     logging.basicConfig(
-        level=getattr(logging, level.upper(), logging.INFO),
+        level=log_level,
         format=log_format,
-        handlers=[logging.StreamHandler(sys.stdout)],
+        handlers=[logging.StreamHandler(sys.stdout), file_handler],
     )
 
 

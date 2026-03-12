@@ -435,3 +435,38 @@ async def update_config(request: Request):
 
     config.save()
     return {"success": True}
+
+
+@router.get("/logs")
+async def get_logs(request: Request, lines: int = 200, level: str = ""):
+    """Get recent log lines from the log file.
+
+    Args:
+        lines: Number of most recent lines to return (default 200).
+        level: Optional filter by log level (e.g. "ERROR", "WARNING").
+    """
+    from app.main import LOG_FILE
+
+    if not LOG_FILE or not LOG_FILE.exists():
+        return {"lines": [], "total": 0}
+
+    try:
+        all_lines = LOG_FILE.read_text(encoding="utf-8").splitlines()
+        if level:
+            level_upper = level.upper()
+            all_lines = [l for l in all_lines if f"[{level_upper}]" in l]
+        # Return the most recent lines
+        recent = all_lines[-lines:]
+        return {"lines": recent, "total": len(all_lines)}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.post("/logs/clear")
+async def clear_logs(request: Request):
+    """Clear the log file."""
+    from app.main import LOG_FILE
+
+    if LOG_FILE and LOG_FILE.exists():
+        LOG_FILE.write_text("", encoding="utf-8")
+    return {"cleared": True}

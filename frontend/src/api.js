@@ -73,6 +73,11 @@ export default {
   // Debug
   getItemPosters: (ratingKey) => request(`/item/${ratingKey}/posters`),
 
+  // Logs
+  getLogs: (lines = 500, level = '') =>
+    request(`/logs?lines=${lines}${level ? '&level=' + level : ''}`),
+  clearLogs: () => request('/logs/clear', { method: 'POST' }),
+
   // Config
   getConfig: () => request('/config'),
   updateConfig: (data) =>
