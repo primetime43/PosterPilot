@@ -122,9 +122,31 @@
 
     </div>
 
+    <!-- Pagination Top -->
+    <div v-if="filteredItems.length > 0" class="pagination-bar">
+      <div class="pagination-info">
+        <span class="text-muted text-xs">
+          {{ (currentPage - 1) * perPage + 1 }}–{{ Math.min(currentPage * perPage, filteredItems.length) }}
+          of {{ filteredItems.length }}
+        </span>
+        <select v-model.number="perPage" class="filter-select pagination-per-page" @change="currentPage = 1">
+          <option :value="50">50 / page</option>
+          <option :value="100">100 / page</option>
+          <option :value="200">200 / page</option>
+        </select>
+      </div>
+      <div class="pagination-controls">
+        <button class="btn btn-outline btn-sm" :disabled="currentPage <= 1" @click="currentPage = 1">&laquo;</button>
+        <button class="btn btn-outline btn-sm" :disabled="currentPage <= 1" @click="currentPage--">&lsaquo;</button>
+        <span class="text-muted text-xs">Page {{ currentPage }} / {{ totalPages }}</span>
+        <button class="btn btn-outline btn-sm" :disabled="currentPage >= totalPages" @click="currentPage++">&rsaquo;</button>
+        <button class="btn btn-outline btn-sm" :disabled="currentPage >= totalPages" @click="currentPage = totalPages">&raquo;</button>
+      </div>
+    </div>
+
     <!-- Results Grid -->
     <div v-if="filteredItems.length > 0" class="results-grid">
-      <div v-for="item in filteredItems" :key="item.rating_key"
+      <div v-for="item in paginatedItems" :key="item.rating_key"
            class="result-card" :class="['action-' + item.action, { 'card-selected': isSelected(item.rating_key), 'card-selectable': item.action === 'change' }]"
            @click="item.action === 'change' && toggleSelect(item.rating_key)">
         <div class="result-header">
@@ -167,6 +189,23 @@
           <a href="#" class="info-link" @click.prevent="showPosterInfo(item.rating_key)"
              title="View poster metadata">Info</a>
         </div>
+      </div>
+    </div>
+
+    <!-- Pagination Bottom -->
+    <div v-if="totalPages > 1" class="pagination-bar">
+      <div class="pagination-info">
+        <span class="text-muted text-xs">
+          {{ (currentPage - 1) * perPage + 1 }}–{{ Math.min(currentPage * perPage, filteredItems.length) }}
+          of {{ filteredItems.length }}
+        </span>
+      </div>
+      <div class="pagination-controls">
+        <button class="btn btn-outline btn-sm" :disabled="currentPage <= 1" @click="goToPage(1)">&laquo;</button>
+        <button class="btn btn-outline btn-sm" :disabled="currentPage <= 1" @click="goToPage(currentPage - 1)">&lsaquo;</button>
+        <span class="text-muted text-xs">Page {{ currentPage }} / {{ totalPages }}</span>
+        <button class="btn btn-outline btn-sm" :disabled="currentPage >= totalPages" @click="goToPage(currentPage + 1)">&rsaquo;</button>
+        <button class="btn btn-outline btn-sm" :disabled="currentPage >= totalPages" @click="goToPage(totalPages)">&raquo;</button>
       </div>
     </div>
 
@@ -240,6 +279,19 @@ const selectedItems = ref([])
 const applying = ref(false)
 const applyProgress = ref({ total: 0, processed: 0, pct: 0, applied: 0, failed: 0 })
 let applyPollInterval = null
+
+// Pagination
+const currentPage = ref(1)
+const perPage = ref(50)
+
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(filteredItems.value.length / perPage.value))
+)
+
+const paginatedItems = computed(() => {
+  const start = (currentPage.value - 1) * perPage.value
+  return filteredItems.value.slice(start, start + perPage.value)
+})
 
 const unappliedChanges = computed(() =>
   allItems.value.filter((i) => i.action === 'change' && !i.applied).length
@@ -322,6 +374,12 @@ function filterItems() {
     items = items.filter((i) => i.title.toLowerCase().includes(q))
   }
   filteredItems.value = items
+  currentPage.value = 1
+}
+
+function goToPage(page) {
+  currentPage.value = page
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 function isSelected(key) {
