@@ -50,6 +50,9 @@ class ScanItem:
     all_candidates: list[PosterCandidate] = field(default_factory=list)
     action: ItemAction = ItemAction.SKIP
     is_locked: bool = False
+    is_uploaded: bool = False
+    is_likely_broken: bool = False
+    broken_reason: Optional[str] = None
     error: Optional[str] = None
     applied: bool = False
 

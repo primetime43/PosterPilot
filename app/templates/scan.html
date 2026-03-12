@@ -11,6 +11,8 @@
             <select x-model="filterAction" @change="filterItems()" class="filter-select">
                 <option value="all">All</option>
                 <option value="change">Changes</option>
+                <option value="uploaded">Uploaded</option>
+                <option value="broken">Broken</option>
                 <option value="skip">Skipped</option>
                 <option value="no_alternatives">No Alternatives</option>
                 <option value="failed">Failed</option>
@@ -55,6 +57,17 @@
                     @click="filterAction = 'failed'; filterItems()">
                 <span class="summary-value" x-text="job?.failed || 0"></span>
                 <span class="summary-label">Failed</span>
+            </button>
+            <button class="summary-item summary-uploaded" :class="{'summary-active': filterAction === 'uploaded'}"
+                    @click="filterAction = 'uploaded'; filterItems()"
+                    title="Posters uploaded by Kometa or manually — review for quality">
+                <span class="summary-value" x-text="uploadedCount"></span>
+                <span class="summary-label">Uploaded</span>
+            </button>
+            <button class="summary-item summary-broken" :class="{'summary-active': filterAction === 'broken'}"
+                    @click="filterAction = 'broken'; filterItems()">
+                <span class="summary-value" x-text="brokenCount"></span>
+                <span class="summary-label">Broken</span>
             </button>
             <button class="summary-item summary-noalt" :class="{'summary-active': filterAction === 'no_alternatives'}"
                     @click="filterAction = 'no_alternatives'; filterItems()">
@@ -117,6 +130,8 @@
                         <h4 x-text="item.title + (item.year ? ' (' + item.year + ')' : '')"></h4>
                         <div class="result-badges">
                             <span class="badge" :class="'badge-' + item.action" x-text="actionLabel(item.action)"></span>
+                            <span class="badge badge-uploaded" x-show="item.is_uploaded" title="Current poster was uploaded (Kometa/manual)">Uploaded</span>
+                            <span class="badge badge-broken" x-show="item.is_likely_broken" :title="item.broken_reason">Broken</span>
                             <span class="badge badge-locked" x-show="item.is_locked" title="Poster field is locked in Plex">Locked</span>
                         </div>
                     </div>
@@ -131,6 +146,9 @@
                         <div class="poster-placeholder" x-show="!item.current_poster_url">No image</div>
                         <p class="text-muted text-xs" x-show="item.current_score !== null">
                             Score: <span x-text="item.current_score?.toFixed(1)"></span>
+                            <span x-show="item.current_provider">
+                                | <span x-text="item.current_provider"></span>
+                            </span>
                         </p>
                     </div>
                     <div class="poster-arrow" x-show="item.best_candidate_url && item.action === 'change'">&#8594;</div>
@@ -152,6 +170,8 @@
                     <span class="text-muted text-xs" x-text="item.num_candidates + ' candidates'"></span>
                     <span class="text-success text-xs" x-show="item.applied">Applied</span>
                     <span x-show="item.error" class="error-text text-xs" x-text="item.error"></span>
+                    <a href="#" class="info-link" @click.prevent="showPosterInfo(item.rating_key)"
+                       title="View poster metadata">Info</a>
                 </div>
             </div>
         </template>
@@ -160,6 +180,24 @@
     <p x-show="job && filteredItems.length === 0" class="text-muted">
         No items match the current filter.
     </p>
+
+    <!-- Poster Info Modal -->
+    <template x-teleport="body">
+        <div class="modal-overlay" x-show="modalOpen" @click.self="modalOpen = false"
+             @keydown.escape.window="modalOpen = false"
+             x-transition.opacity>
+            <div class="modal" @click.stop>
+                <div class="modal-header">
+                    <h3 x-text="modalTitle"></h3>
+                    <button class="modal-close" @click="modalOpen = false">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div x-show="modalLoading" class="text-muted">Loading...</div>
+                    <pre x-show="!modalLoading" class="modal-json" x-text="modalJson"></pre>
+                </div>
+            </div>
+        </div>
+    </template>
 </div>
 
 <script>
@@ -176,7 +214,13 @@ function scanResults() {
         applyProgress: {total: 0, processed: 0, pct: 0, applied: 0, failed: 0},
         applyPollInterval: null,
         lockedCount: 0,
+        uploadedCount: 0,
+        brokenCount: 0,
         noAltCount: 0,
+        modalOpen: false,
+        modalTitle: '',
+        modalJson: '',
+        modalLoading: false,
 
         async init() {
             // Check URL params for job_id
@@ -206,6 +250,8 @@ function scanResults() {
                 this.job = data;
                 this.allItems = data.items || [];
                 this.lockedCount = this.allItems.filter(i => i.is_locked).length;
+                this.uploadedCount = this.allItems.filter(i => i.is_uploaded).length;
+                this.brokenCount = this.allItems.filter(i => i.is_likely_broken).length;
                 this.noAltCount = this.allItems.filter(i => i.action === 'no_alternatives').length;
                 this.filterItems();
             } catch (e) {
@@ -218,6 +264,10 @@ function scanResults() {
             if (this.filterAction === 'locked') {
                 // "Locked" filters by the is_locked flag, not action
                 items = items.filter(i => i.is_locked);
+            } else if (this.filterAction === 'uploaded') {
+                items = items.filter(i => i.is_uploaded);
+            } else if (this.filterAction === 'broken') {
+                items = items.filter(i => i.is_likely_broken);
             } else if (this.filterAction !== 'all') {
                 items = items.filter(i => i.action === this.filterAction);
             }
@@ -323,6 +373,22 @@ function scanResults() {
             } catch (e) {
                 console.error('Export failed:', e);
             }
+        },
+
+        async showPosterInfo(ratingKey) {
+            this.modalOpen = true;
+            this.modalLoading = true;
+            this.modalTitle = 'Poster Info';
+            this.modalJson = '';
+            try {
+                const res = await fetch('/api/item/' + ratingKey + '/posters');
+                const data = await res.json();
+                this.modalTitle = (data.item?.title || 'Item') + ' — Poster Data';
+                this.modalJson = JSON.stringify(data, null, 2);
+            } catch (e) {
+                this.modalJson = 'Error: ' + e.message;
+            }
+            this.modalLoading = false;
         },
 
         actionLabel(action) {

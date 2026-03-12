@@ -257,9 +257,15 @@ async def get_scan_status(request: Request, job_id: str):
                     i.current_poster.score if i.current_poster else None
                 ),
                 "is_locked": i.is_locked,
+                "is_uploaded": i.is_uploaded,
+                "is_likely_broken": i.is_likely_broken,
+                "broken_reason": i.broken_reason,
                 "applied": i.applied,
                 "error": i.error,
                 "num_candidates": len(i.all_candidates),
+                "current_provider": (
+                    i.current_poster.provider if i.current_poster else None
+                ),
             }
             for i in job.items
         ]
@@ -337,6 +343,56 @@ async def list_jobs(request: Request):
             for j in jobs
         ]
     }
+
+
+@router.get("/item/{rating_key}/posters")
+async def get_item_posters(request: Request, rating_key: str):
+    """Debug endpoint: return raw poster data for a specific item.
+
+    Useful for inspecting what Plex provides for broken poster detection.
+    """
+    plex = request.app.state.plex_client
+    if not plex.is_connected():
+        return JSONResponse(status_code=400, content={"error": "Not connected"})
+
+    try:
+        item = plex.server.fetchItem(int(rating_key))
+        raw_posters = plex.get_item_posters(item)
+
+        item_info = {
+            "title": item.title,
+            "rating_key": str(item.ratingKey),
+            "thumb": getattr(item, "thumb", ""),
+            "item_type": item.type,
+            "is_locked": plex.is_poster_locked(item),
+        }
+
+        selected_poster = None
+        posters = []
+        for p in raw_posters:
+            entry = {
+                "ratingKey": getattr(p, "ratingKey", ""),
+                "key": getattr(p, "key", ""),
+                "thumb": getattr(p, "thumb", ""),
+                "provider": getattr(p, "provider", None),
+                "selected": getattr(p, "selected", False),
+            }
+            posters.append(entry)
+            if entry["selected"]:
+                selected_poster = entry
+
+        summary = {
+            "total_posters": len(posters),
+            "has_selected": selected_poster is not None,
+            "selected_poster": selected_poster,
+            "providers": list(set(
+                p.get("provider") or "(none)" for p in posters
+            )),
+        }
+
+        return {"item": item_info, "summary": summary, "posters": posters}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @router.get("/config")

@@ -124,10 +124,12 @@
                     </div>
                     <p><span x-text="lib.item_count"></span> items</p>
                     <div class="card-actions">
-                        <button class="btn btn-primary btn-sm" @click="startScan(lib)">
+                        <button class="btn btn-primary btn-sm" @click="startScan(lib)"
+                                title="Check for better poster options and recommend changes">
                             Scan
                         </button>
-                        <button class="btn btn-outline btn-sm" @click="startScan(lib, true)">
+                        <button class="btn btn-outline btn-sm" @click="startScan(lib, true)"
+                                title="Re-evaluate all items, even ones that were previously skipped or look fine">
                             Force Rescan
                         </button>
                     </div>

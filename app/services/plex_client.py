@@ -10,6 +10,7 @@ Supports two authentication methods:
 
 import logging
 import threading
+import urllib.parse
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -361,14 +362,27 @@ class PlexClient:
     def get_poster_thumb_url(self, poster) -> str:
         """Get a usable thumbnail URL for a poster.
 
-        Constructs a full URL using the Plex server base.
+        Constructs a full URL using the Plex server base. External URLs
+        (e.g. from metadata providers) are proxied through Plex's photo
+        transcode endpoint so the browser can always access them.
         """
         if not self._server:
             return ""
         thumb = getattr(poster, "thumb", None) or getattr(poster, "key", "")
-        if thumb and not thumb.startswith("http"):
-            return f"{self._server._baseurl}{thumb}?X-Plex-Token={self._server._token}"
-        return thumb or ""
+        if not thumb:
+            return ""
+        if thumb.startswith("http"):
+            # External URL — proxy through Plex so the browser can access it
+            encoded = urllib.parse.quote(thumb, safe="")
+            return (
+                f"{self._server._baseurl}/photo/:/transcode"
+                f"?url={encoded}&width=600&height=900&minSize=1"
+                f"&X-Plex-Token={self._server._token}"
+            )
+        # Use & if path already has query params (e.g. /file?url=...),
+        # otherwise use ? for the first query parameter.
+        separator = "&" if "?" in thumb else "?"
+        return f"{self._server._baseurl}{thumb}{separator}X-Plex-Token={self._server._token}"
 
     def get_item_thumb_url(self, item) -> str:
         """Get the current poster thumbnail URL for a media item."""
@@ -376,7 +390,8 @@ class PlexClient:
             return ""
         thumb = getattr(item, "thumb", "")
         if thumb and not thumb.startswith("http"):
-            return f"{self._server._baseurl}{thumb}?X-Plex-Token={self._server._token}"
+            separator = "&" if "?" in thumb else "?"
+            return f"{self._server._baseurl}{thumb}{separator}X-Plex-Token={self._server._token}"
         return thumb or ""
 
     def is_poster_locked(self, item) -> bool:

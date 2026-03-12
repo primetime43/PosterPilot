@@ -31,6 +31,11 @@ class LibraryScanner:
         self._extractor = PosterExtractor(plex_client, inspect_images=False)
         self._scorer = PosterScorer(config.scoring)
 
+    # Providers considered low quality / likely broken
+    _WEAK_PROVIDERS = {None, "", "gracenote", "local"}
+    # Providers considered high quality
+    _GOOD_PROVIDERS = {"tmdb", "tvdb"}
+
     def scan_item(self, item, force_refresh: bool = False) -> ScanItem:
         """Scan a single media item and determine the best poster action.
 
@@ -69,6 +74,13 @@ class LibraryScanner:
             current = self._extractor.find_current_poster(ranked)
             scan_item.current_poster = current
 
+            # Check if current poster is an upload (Kometa, manual upload, etc.)
+            if current and current.rating_key.startswith("upload://"):
+                scan_item.is_uploaded = True
+
+            # Detect likely broken posters
+            self._detect_broken_poster(scan_item, current, ranked)
+
             # Best candidate is the top-ranked one that has a valid thumb URL.
             # Never recommend switching to a poster with no image.
             best = None
@@ -93,6 +105,9 @@ class LibraryScanner:
             elif current is None:
                 # No current poster identified in candidates — recommend best
                 scan_item.action = ItemAction.CHANGE
+            elif scan_item.is_likely_broken:
+                # Broken poster always gets a change recommendation
+                scan_item.action = ItemAction.CHANGE
             else:
                 # Current is not the best — recommend change only if
                 # the score difference is meaningful (avoids churn)
@@ -108,6 +123,49 @@ class LibraryScanner:
             logger.error("Error scanning '%s': %s", item.title, e)
 
         return scan_item
+
+    def _detect_broken_poster(
+        self,
+        scan_item: ScanItem,
+        current: Optional[PosterCandidate],
+        ranked: list[PosterCandidate],
+    ) -> None:
+        """Detect if the current poster is likely broken or low quality.
+
+        Metadata-based heuristics (no image downloading):
+        1. No poster is selected among candidates — the item's thumb
+           is not from the poster list, meaning it's likely an
+           auto-generated video frame or a stale/orphaned poster
+        2. Current poster has no/empty thumb URL
+        3. Current poster is from Gracenote (known low quality)
+        """
+        has_good_alt = any(
+            c.provider and c.provider.lower() in self._GOOD_PROVIDERS and c.thumb_url
+            for c in ranked
+        )
+
+        if current is None:
+            # No poster candidate is marked as selected. The item's
+            # thumb is something outside the poster list — typically an
+            # auto-generated video frame or an orphaned upload.
+            scan_item.is_likely_broken = True
+            scan_item.broken_reason = (
+                "No poster is selected — current image is not from "
+                "any known poster source (likely a video frame)"
+            )
+            return
+
+        if not current.thumb_url:
+            scan_item.is_likely_broken = True
+            scan_item.broken_reason = "Current poster has no image URL"
+            return
+
+        current_provider = (current.provider or "").lower()
+
+        # Gracenote posters are often low quality auto-picks
+        if current_provider == "gracenote" and has_good_alt:
+            scan_item.is_likely_broken = True
+            scan_item.broken_reason = "Current poster is from Gracenote (often low quality)"
 
     def scan_library(
         self,

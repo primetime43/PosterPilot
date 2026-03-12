@@ -164,7 +164,8 @@ class ImageInspector:
     """Lightweight image inspection using Pillow.
 
     Used to get width/height from poster images when not available
-    from the Plex API metadata. Only loads image headers, not full decode.
+    from the Plex API metadata. Also provides brightness analysis
+    for detecting broken/corrupt posters (dark video frame grabs).
     """
 
     @staticmethod
@@ -196,3 +197,42 @@ class ImageInspector:
         except Exception as e:
             logger.debug("Could not fetch/inspect image from URL: %s", e)
         return None
+
+    @staticmethod
+    def get_brightness_from_url(url: str, timeout: int = 5) -> Optional[float]:
+        """Fetch image and return median brightness of the center region (0-255).
+
+        Crops to the center 50% of the image before analysis to avoid
+        overlay badges (Kometa, PMM) that sit in corners and inflate
+        brightness of otherwise dark video frame grabs.
+
+        Uses median instead of mean for robustness against bright outlier
+        pixels from overlays.
+        """
+        try:
+            import httpx
+            from PIL import Image
+
+            with httpx.Client(timeout=timeout, verify=False) as client:
+                response = client.get(url)
+                if response.status_code != 200:
+                    return None
+
+            img = Image.open(BytesIO(response.content))
+            w, h = img.size
+
+            # Crop to center 50% to avoid corner overlays
+            left = w // 4
+            top = h // 4
+            right = w - left
+            bottom = h - top
+            center = img.crop((left, top, right, bottom))
+
+            # Convert to grayscale and get pixel data
+            center = center.resize((32, 32)).convert("L")
+            pixels = sorted(center.getdata())
+            median = pixels[len(pixels) // 2]
+            return float(median)
+        except Exception as e:
+            logger.debug("Could not check brightness for URL: %s", e)
+            return None
