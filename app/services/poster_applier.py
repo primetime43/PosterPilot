@@ -5,10 +5,16 @@ dry-run mode, error handling, and result tracking.
 """
 
 import logging
-from typing import Optional
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Callable, Optional
 
 from app.models import ItemAction, ScanItem
 from app.services.plex_client import PlexClient
+
+# Concurrent Plex API calls for poster applying.
+# Lower than scanning since each apply does a write operation.
+MAX_APPLY_WORKERS = 4
 
 logger = logging.getLogger("posterpilot.poster_applier")
 
@@ -89,19 +95,37 @@ class PosterApplier:
         return scan_item
 
     def apply_batch(
-        self, items: list[ScanItem], dry_run: bool = True
+        self,
+        items: list[ScanItem],
+        dry_run: bool = True,
+        progress_callback: Optional[Callable[[int, int, ScanItem], None]] = None,
     ) -> list[ScanItem]:
-        """Apply poster changes for a batch of items.
+        """Apply poster changes for a batch of items using concurrent threads.
 
         Only processes items with action == CHANGE.
         """
         changeable = [i for i in items if i.action == ItemAction.CHANGE]
+        total = len(changeable)
         logger.info(
-            "Applying %d poster changes (dry_run=%s)", len(changeable), dry_run
+            "Applying %d poster changes (dry_run=%s)", total, dry_run
         )
 
-        for item in changeable:
-            self.apply_item(item, dry_run)
+        processed = 0
+        lock = threading.Lock()
+
+        def _apply_one(scan_item: ScanItem) -> ScanItem:
+            return self.apply_item(scan_item, dry_run)
+
+        with ThreadPoolExecutor(max_workers=MAX_APPLY_WORKERS) as pool:
+            futures = {
+                pool.submit(_apply_one, item): item for item in changeable
+            }
+            for future in as_completed(futures):
+                result = future.result()
+                with lock:
+                    processed += 1
+                    if progress_callback:
+                        progress_callback(processed, total, result)
 
         applied = sum(1 for i in changeable if i.applied)
         failed = sum(1 for i in changeable if i.action == ItemAction.FAILED)

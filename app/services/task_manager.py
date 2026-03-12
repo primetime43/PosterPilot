@@ -406,20 +406,23 @@ class TaskManager:
             apply_job.status = ScanStatus.SCANNING  # reuse as "in progress"
             applier = PosterApplier(self._plex)
 
-            for i, scan_item in enumerate(items):
-                applier.apply_item(scan_item, dry_run=dry_run)
+            lock = threading.Lock()
 
-                if dry_run:
-                    # In dry run, count items that would be changed
-                    if scan_item.action == ItemAction.CHANGE:
-                        apply_job.applied_count += 1
-                else:
-                    if scan_item.applied:
-                        apply_job.applied_count += 1
-                    elif scan_item.action == ItemAction.FAILED:
-                        apply_job.failed_count += 1
+            def on_progress(processed: int, total: int, scan_item: ScanItem) -> None:
+                with lock:
+                    apply_job.processed_items = processed
+                    if dry_run:
+                        if scan_item.action == ItemAction.CHANGE:
+                            apply_job.applied_count += 1
+                    else:
+                        if scan_item.applied:
+                            apply_job.applied_count += 1
+                        elif scan_item.action == ItemAction.FAILED:
+                            apply_job.failed_count += 1
 
-                apply_job.processed_items = i + 1
+            applier.apply_batch(
+                items, dry_run=dry_run, progress_callback=on_progress
+            )
 
             apply_job.status = ScanStatus.COMPLETE
             apply_job.completed_at = datetime.now(timezone.utc)
