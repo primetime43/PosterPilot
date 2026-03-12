@@ -9,6 +9,11 @@ const state = reactive({
   connected: false,
   serverName: '',
   serverVersion: '',
+  platform: '',
+  platformVersion: '',
+  machineId: '',
+  host: '',
+  libraryCount: 0,
 })
 
 async function checkStatus() {
@@ -17,6 +22,11 @@ async function checkStatus() {
     state.connected = data.connected
     state.serverName = data.server_name || ''
     state.serverVersion = data.version || ''
+    state.platform = data.platform || ''
+    state.platformVersion = data.platform_version || ''
+    state.machineId = data.machine_id || ''
+    state.host = data.host || ''
+    state.libraryCount = data.library_count || 0
   } catch {
     state.connected = false
   }
@@ -32,6 +42,11 @@ function setDisconnected() {
   state.connected = false
   state.serverName = ''
   state.serverVersion = ''
+  state.platform = ''
+  state.platformVersion = ''
+  state.machineId = ''
+  state.host = ''
+  state.libraryCount = 0
 }
 
 export function useConnection() {

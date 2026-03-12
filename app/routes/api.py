@@ -145,11 +145,21 @@ async def connection_status(request: Request):
     """Get current Plex connection status."""
     plex = request.app.state.plex_client
     if plex.is_connected():
-        return {
+        server = plex.server
+        result = {
             "connected": True,
-            "server_name": plex.server.friendlyName,
-            "version": plex.server.version,
+            "server_name": server.friendlyName,
+            "version": server.version,
         }
+        try:
+            result["platform"] = getattr(server, "platform", None)
+            result["platform_version"] = getattr(server, "platformVersion", None)
+            result["machine_id"] = getattr(server, "machineIdentifier", None)
+            result["host"] = getattr(server, "_baseurl", None)
+            result["library_count"] = len(server.library.sections())
+        except Exception:
+            pass
+        return result
     return {"connected": False}
 
 
