@@ -444,6 +444,14 @@ h3 {
 .result-card.action-skip { border-left: 3px solid var(--warning); }
 .result-card.action-failed { border-left: 3px solid var(--error); }
 
+.result-card.card-selectable { cursor: pointer; }
+.result-card.card-selectable:hover { border-color: var(--accent); }
+.result-card.card-selected {
+    border-color: var(--accent);
+    background: rgba(99, 102, 241, 0.08);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
 .result-header {
     display: flex;
     align-items: flex-start;

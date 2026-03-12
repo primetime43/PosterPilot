@@ -124,11 +124,9 @@
     <!-- Results Grid -->
     <div v-if="filteredItems.length > 0" class="results-grid">
       <div v-for="item in filteredItems" :key="item.rating_key"
-           class="result-card" :class="'action-' + item.action">
+           class="result-card" :class="['action-' + item.action, { 'card-selected': isSelected(item.rating_key), 'card-selectable': item.action === 'change' }]"
+           @click="item.action === 'change' && toggleSelect(item.rating_key)">
         <div class="result-header">
-          <label v-if="item.action === 'change'" class="checkbox-label">
-            <input type="checkbox" :value="item.rating_key" @change="toggleSelect(item.rating_key, $event)" />
-          </label>
           <div class="result-title">
             <h4>{{ item.title }}{{ item.year ? ' (' + item.year + ')' : '' }}</h4>
           </div>
@@ -275,11 +273,15 @@ function filterItems() {
   filteredItems.value = items
 }
 
-function toggleSelect(key, event) {
-  if (event.target.checked) {
-    selectedItems.value.push(key)
-  } else {
+function isSelected(key) {
+  return selectedItems.value.includes(key)
+}
+
+function toggleSelect(key) {
+  if (isSelected(key)) {
     selectedItems.value = selectedItems.value.filter((k) => k !== key)
+  } else {
+    selectedItems.value.push(key)
   }
 }
 
