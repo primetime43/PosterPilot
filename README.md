@@ -1,196 +1,90 @@
 # PosterPilot
 
-Automatic poster management for Plex. Scans your Plex libraries, scores available poster options, and applies the best one — so you don't have to manually pick posters one by one.
+Automatic poster management for Plex. Scans your libraries, scores available poster options, and applies the best one — so you don't have to manually pick posters one by one.
 
 ## Features
 
-- **Automatic poster scoring** — ranks posters by resolution, aspect ratio, and provider source
+- **Automatic poster scoring** — ranks posters by provider, resolution, and aspect ratio
 - **Preview before applying** — see current vs. recommended posters side by side
+- **Plex OAuth sign-in** — sign in with your Plex account, no need to find your token
 - **Batch processing** — scan and update entire libraries at once
-- **Dry-run mode** — enabled by default, shows what would change without touching anything
-- **Background scanning** — scans run in the background with live progress updates
-- **Configurable rules** — adjust scoring weights, minimum resolution, provider priority
-- **Library filtering** — whitelist/blacklist specific libraries
-- **Export results** — download scan results as JSON
-- **Dark theme UI** — clean, modern dashboard interface
+- **Dry-run mode** — see what would change before applying anything
+- **Live progress** — background scanning and applying with real-time progress bars
+- **Configurable** — adjust scoring weights, provider priority, and filtering from the UI
+- **Dark theme UI**
 
-## Quick Start
+## Getting Started
 
-### From Source (Local Development)
+### Run from Source
 
 ```bash
-# Clone the repo
-git clone <your-repo-url>
+git clone https://github.com/primetime43/PosterPilot.git
 cd PosterPilot
-
-# Create a virtual environment
 python -m venv .venv
-.venv\Scripts\activate  # Windows
-# source .venv/bin/activate  # Linux/macOS
-
-# Install dependencies
+.venv\Scripts\activate   # Windows
 pip install -r requirements.txt
-
-# Run
 python run.py
 ```
 
-The app opens at **http://127.0.0.1:8888**.
+Opens at **http://127.0.0.1:8888**. On Windows you can also just double-click `start.bat`.
 
 ### Docker
 
 ```bash
-# Build and run
 docker compose up -d
-
-# Or with environment variables
-PLEX_URL=http://your-plex:32400 PLEX_TOKEN=your-token docker compose up -d
 ```
 
-Access at **http://localhost:8888**.
+Access at **http://localhost:8888**. Optionally set `PLEX_URL` and `PLEX_TOKEN` environment variables in `docker-compose.yml`.
 
-### Windows EXE (PyInstaller)
+### Windows EXE
 
-```bash
-# Install build dependencies
-pip install -r requirements.txt
-pip install pyinstaller
+Run `build.bat` to build a standalone EXE with PyInstaller. The EXE launches the web server and opens your browser.
 
-# Build
-pyinstaller posterpilot.spec --clean
+## How to Use
 
-# Run
-dist\PosterPilot.exe
-```
-
-Or simply run `build.bat`.
-
-The EXE launches the web server and opens your browser automatically.
+1. Open PosterPilot in your browser
+2. Click **Sign in with Plex** (or use manual token entry)
+3. Select your Plex server
+4. Pick a library and click **Scan**
+5. Review results — current poster vs. recommended, side by side
+6. Filter by Changes / Skipped / Locked / etc.
+7. Click **Apply All Changes** or select individual items to apply
 
 ## Configuration
 
-Configuration is stored in `data/config.toml`. You can also configure everything through the Settings page in the web UI.
+All settings are configurable from the **Settings** page in the UI. Config is saved to `data/config.toml`.
 
-Environment variables override config file values:
+For Docker, you can also use environment variables:
 
 | Variable | Description | Default |
 |---|---|---|
-| `PLEX_URL` | Plex server base URL | _(empty)_ |
-| `PLEX_TOKEN` | Plex authentication token | _(empty)_ |
-| `POSTERPILOT_HOST` | Web server bind host | `0.0.0.0` |
+| `PLEX_URL` | Plex server URL | _(empty)_ |
+| `PLEX_TOKEN` | Plex token | _(empty)_ |
 | `POSTERPILOT_PORT` | Web server port | `8888` |
-| `POSTERPILOT_DRY_RUN` | Enable dry-run by default | `true` |
-| `POSTERPILOT_LOG_LEVEL` | Log level (DEBUG/INFO/WARNING/ERROR) | `INFO` |
-| `POSTERPILOT_DATA_DIR` | Data directory for config/logs | `./data` |
+| `POSTERPILOT_DATA_DIR` | Data directory | `./data` |
 
-## How Poster Scoring Works
+## Poster Scoring
 
-Each poster candidate is scored on multiple factors:
+Posters are ranked automatically using:
 
-### Provider Score (weight: 1.0)
-Posters from known metadata agents score higher. Default priority:
-1. **TMDB** (5.0) — generally high quality
-2. **TVDB** (4.0)
-3. **Gracenote** (3.0)
-4. **Local** (2.0) — embedded in media file
-5. **Upload** (1.0) — user-uploaded
+- **Provider priority** — TMDB > TVDB > Gracenote > Local > Upload
+- **Aspect ratio** — prefers standard 2:3 poster ratio, penalizes landscape images
+- **Resolution** — higher resolution scores better
+- **Stability bonus** — slight preference for the current poster to avoid unnecessary changes
 
-### Resolution Score (weight: 1.0)
-| Resolution | Score |
-|---|---|
-| ≥ 1000×1500 | 5.0 |
-| ≥ 600×900 | 4.0 |
-| ≥ 400×600 | 3.0 |
-| ≥ 200×300 | 2.0 |
-| Below | 1.0 |
+A change is only recommended when the best candidate scores meaningfully higher than the current poster. All scoring weights are adjustable in Settings.
 
-### Aspect Ratio Score (weight: 1.5)
-Standard poster ratio is 2:3 (0.667). Posters closer to this ratio score higher.
+## Known Limitations
 
-### Penalties
-- **Landscape images** (wider than tall): -5.0 penalty
-- **Below minimum width** (default 300px): -3.0
-- **Below minimum height** (default 450px): -3.0
-
-### Currently Selected Bonus
-The currently active poster gets a +0.5 bonus to avoid unnecessary changes when scores are close.
-
-### Decision Logic
-A poster change is recommended only when the best candidate scores **more than 0.5 points** above the current poster. This prevents churn on marginal differences.
-
-## How It Works with Plex
-
-PosterPilot uses the [python-plexapi](https://github.com/pkkid/python-plexapi) library:
-
-- **`item.posters()`** — retrieves all available poster options for a media item. Each poster has `ratingKey`, `thumb` (URL path), `provider` (source), and `selected` (boolean).
-- **`item.setPoster(poster)`** — applies a specific poster to the item.
-
-### Known Plex API Limitations
-
-1. **`posters()` makes an API call per item** — scanning large libraries (1000+ items) takes time. Progress is tracked in the UI.
-2. **Image dimensions not in poster metadata** — the API returns poster URLs but not width/height. PosterPilot optionally fetches each poster image to inspect dimensions, which adds network overhead.
-3. **Provider field may be None** — for uploaded or some agent-supplied posters, the `provider` attribute can be `None`. These receive a neutral score.
-4. **Poster availability varies** — some items may have only 1 poster (the default), leaving no alternatives to choose from.
-5. **No built-in poster quality metric** — Plex doesn't score poster quality. All ranking is done by PosterPilot's scoring engine.
-
-## Project Structure
-
-```
-PosterPilot/
-├── app/
-│   ├── main.py              # FastAPI app factory
-│   ├── config.py             # Configuration management
-│   ├── models.py             # Pydantic/dataclass models
-│   ├── services/
-│   │   ├── plex_client.py    # Plex server connection layer
-│   │   ├── library_scanner.py # Scan orchestration
-│   │   ├── poster_extractor.py # Poster candidate extraction
-│   │   ├── poster_scorer.py  # Scoring/ranking engine
-│   │   ├── poster_applier.py # Apply changes to Plex
-│   │   └── task_manager.py   # Background job management
-│   ├── routes/
-│   │   ├── api.py            # JSON API endpoints
-│   │   └── pages.py          # HTML page routes
-│   ├── templates/            # Jinja2 templates
-│   └── static/               # CSS/JS assets
-├── data/
-│   └── config.toml           # Configuration file
-├── run.py                    # Entry point
-├── requirements.txt
-├── pyproject.toml
-├── Dockerfile
-├── docker-compose.yml
-├── posterpilot.spec          # PyInstaller build spec
-└── build.bat                 # Windows build script
-```
-
-## Workflow
-
-1. Open PosterPilot in your browser
-2. Enter your Plex server URL and token on the Dashboard
-3. Click **Connect**
-4. Select a library and click **Scan** (or **Force Rescan**)
-5. Wait for the scan to complete — progress shown in real time
-6. Go to **Scan Results** to review:
-   - Current poster vs. recommended poster (side by side)
-   - Score comparison
-   - Action: Change / Skip / No Alternatives / Failed / Locked
-7. Click **Dry Run All** to see what would change
-8. Click **Apply All Changes** to apply, or select specific items
-9. Export results as JSON if needed
+- Plex has no batch API for posters — each item requires its own API call, so large libraries take time to scan. Scans run in parallel (8 concurrent) to help.
+- Poster image dimensions aren't in Plex metadata, so scoring relies primarily on provider and aspect ratio rather than exact resolution.
+- Some poster URLs from Plex may be inaccessible (relay/auth issues). These are filtered out automatically.
 
 ## Roadmap
 
-- [ ] Smarter image scoring (detect watermarks, text overlay, color quality)
-- [ ] ML-based poster quality assessment (behind a feature flag)
-- [ ] Source/provider prioritization UI per library
-- [ ] Scheduled automatic scans (cron-like)
-- [ ] Web UI authentication (basic auth or token)
-- [ ] Poster lock awareness improvements
+- [ ] Smarter image scoring (watermarks, text overlay detection)
+- [ ] Scheduled automatic scans
 - [ ] TV show season/episode poster support
+- [ ] Undo/rollback poster changes
+- [ ] TMDB/TVDB direct API integration for more poster sources
 - [ ] Docker Hub image publishing
-- [ ] Auto-updater for Windows EXE builds
-- [ ] Undo/rollback last poster change
-- [ ] Poster comparison history
-- [ ] TMDB/TVDB direct API integration for additional poster sources
-- [ ] Webhook notifications on scan completion
