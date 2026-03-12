@@ -1,10 +1,13 @@
 <template>
   <div>
-    <h2>Dashboard</h2>
-
     <!-- Not connected: OAuth + Manual -->
     <template v-if="!connection.connected && !oauthActive && !serverPickerActive">
-      <div class="card">
+      <div class="dash-welcome">
+        <h2>Welcome to PosterPilot</h2>
+        <p class="text-muted">Connect to your Plex server to get started.</p>
+      </div>
+
+      <div class="card" style="max-width: 480px">
         <h3>Sign in to Plex</h3>
         <p class="text-muted" style="margin-bottom: 16px">
           Sign in with your Plex account to get started.
@@ -15,7 +18,7 @@
         <p v-if="connectionError" class="error-text">{{ connectionError }}</p>
       </div>
 
-      <div class="card">
+      <div class="card" style="max-width: 480px">
         <button class="btn btn-outline btn-sm" @click="showManual = !showManual">
           {{ showManual ? 'Hide manual login' : 'Use manual token instead' }}
         </button>
@@ -36,7 +39,7 @@
     </template>
 
     <!-- OAuth: Waiting -->
-    <div v-if="oauthActive" class="card">
+    <div v-if="oauthActive" class="card" style="max-width: 480px">
       <h3>Waiting for Plex sign-in...</h3>
       <p class="text-muted">
         A Plex sign-in window should have opened. Complete the sign-in there, then return here.
@@ -53,7 +56,7 @@
     </div>
 
     <!-- Server Picker -->
-    <div v-if="serverPickerActive && !connection.connected" class="card">
+    <div v-if="serverPickerActive && !connection.connected" class="card" style="max-width: 540px">
       <h3>Select a Plex Server</h3>
       <p class="text-muted" style="margin-bottom: 12px">
         Signed in as <strong>{{ oauthUsername }}</strong>. Choose which server to manage:
@@ -95,94 +98,133 @@
       <p v-if="connectionError" class="error-text">{{ connectionError }}</p>
     </div>
 
-    <!-- Connected Status -->
-    <div v-if="connection.connected" class="card">
-      <div class="card-header">
-        <div>
-          <h3 style="margin: 0">Connected to {{ connection.serverName }}</h3>
-          <p class="text-muted text-xs" style="margin-top: 2px">{{ connection.serverVersion }}</p>
-        </div>
-        <button class="btn btn-sm btn-outline" @click="disconnect">Disconnect</button>
-      </div>
-    </div>
+    <!-- ═══ Connected Dashboard ═══ -->
+    <template v-if="connection.connected">
 
-    <!-- Libraries -->
-    <div v-if="connection.connected">
-      <h3>Libraries</h3>
-      <div class="card-grid">
-        <div v-for="lib in libraries" :key="lib.key" class="card library-card">
-          <div class="card-header">
-            <h4>{{ lib.title }}</h4>
-            <span class="badge">{{ lib.type }}</span>
-          </div>
-          <p>{{ lib.item_count }} items</p>
-          <div class="card-actions">
-            <button class="btn btn-primary btn-sm" @click="startScan(lib)"
-                    title="Check for better poster options and recommend changes">
-              Scan
-            </button>
-            <button class="btn btn-outline btn-sm" @click="startScan(lib, true)"
-                    title="Re-evaluate all items, even ones that were previously skipped or look fine">
-              Force Rescan
-            </button>
+      <!-- Header -->
+      <div class="dash-header">
+        <div class="dash-header-left">
+          <h2 style="margin: 0">Dashboard</h2>
+          <div class="dash-server-tag">
+            <span class="dash-server-dot"></span>
+            <span>{{ connection.serverName }}</span>
+            <span class="text-muted text-xs">{{ connection.serverVersion }}</span>
           </div>
         </div>
+        <button class="btn btn-outline btn-sm" @click="disconnect">Disconnect</button>
       </div>
-      <p v-if="libraries.length === 0 && !loadingLibraries" class="text-muted">
-        No poster-capable libraries found.
-      </p>
-    </div>
 
-    <!-- Active Scan Progress -->
-    <div v-if="scanState.active" class="card scan-progress-card">
-      <h3>Scanning: {{ scanState.library }}</h3>
-      <div class="progress-bar">
-        <div class="progress-fill" :style="{ width: (scanState.progressPct || 0) + '%' }"></div>
+      <!-- Active Scan Progress -->
+      <div v-if="scanState.active" class="dash-scan-active card">
+        <div class="dash-scan-header">
+          <div>
+            <h3 style="margin: 0">
+              {{ scanState.status === 'complete' ? 'Scan Complete' : scanState.status === 'failed' ? 'Scan Failed' : 'Scanning...' }}
+            </h3>
+            <span class="text-muted text-xs">{{ scanState.library }}</span>
+          </div>
+          <span class="badge" :class="'badge-' + scanState.status">
+            {{ scanState.status }}
+          </span>
+        </div>
+        <div class="progress-bar" style="margin: 12px 0 6px">
+          <div class="progress-fill" :style="{ width: (scanState.progressPct || 0) + '%' }"></div>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center">
+          <span class="text-muted text-xs">
+            {{ scanState.processed || 0 }} / {{ scanState.total || 0 }} items
+          </span>
+          <span class="text-muted text-xs">{{ scanState.progressPct || 0 }}%</span>
+        </div>
+        <router-link v-if="scanState.status === 'complete'"
+                     :to="{ name: 'scan', query: { job_id: scanState.jobId } }"
+                     class="btn btn-primary btn-sm" style="margin-top: 10px">
+          View Results
+        </router-link>
       </div>
-      <p class="text-muted">
-        {{ scanState.processed || 0 }} / {{ scanState.total || 0 }} items processed
-        ({{ scanState.progressPct || 0 }}%)
-      </p>
-      <p v-if="scanState.status === 'complete'" class="text-success">
-        Scan complete!
-        <router-link :to="{ name: 'scan', query: { job_id: scanState.jobId } }">View Results</router-link>
-      </p>
-    </div>
 
-    <!-- Recent Jobs -->
-    <div v-if="connection.connected && jobs.length > 0">
-      <h3>Recent Scans</h3>
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Library</th>
-            <th>Status</th>
-            <th>Items</th>
-            <th>Changes</th>
-            <th>Started</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="job in jobs" :key="job.job_id">
-            <td>{{ job.library }}</td>
-            <td><span class="badge" :class="'badge-' + job.status">{{ job.status }}</span></td>
-            <td>{{ job.total_items }}</td>
-            <td>{{ job.changes }}</td>
-            <td>{{ formatDate(job.started_at) }}</td>
-            <td style="display: flex; gap: 4px;">
+      <!-- Libraries -->
+      <div class="dash-section">
+        <h3 class="dash-section-title">Libraries</h3>
+        <div class="dash-lib-grid">
+          <div v-for="lib in libraries" :key="lib.key" class="dash-lib-card">
+            <div class="dash-lib-top">
+              <div class="dash-lib-icon">
+                <svg v-if="lib.type === 'movie'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+                  <line x1="7" y1="2" x2="7" y2="22"></line>
+                  <line x1="17" y1="2" x2="17" y2="22"></line>
+                  <line x1="2" y1="12" x2="22" y2="12"></line>
+                  <line x1="2" y1="7" x2="7" y2="7"></line>
+                  <line x1="2" y1="17" x2="7" y2="17"></line>
+                  <line x1="17" y1="7" x2="22" y2="7"></line>
+                  <line x1="17" y1="17" x2="22" y2="17"></line>
+                </svg>
+                <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect>
+                  <polyline points="17 2 12 7 7 2"></polyline>
+                </svg>
+              </div>
+              <span class="dash-lib-type">{{ lib.type }}</span>
+            </div>
+            <h4 class="dash-lib-name">{{ lib.title }}</h4>
+            <div class="dash-lib-count">
+              <span class="dash-lib-count-num">{{ lib.item_count.toLocaleString() }}</span>
+              <span class="dash-lib-count-label">items</span>
+            </div>
+            <div v-if="getLibLastScan(lib.title)" class="dash-lib-lastscan">
+              <span class="text-muted text-xs">Last scan {{ formatRelative(getLibLastScan(lib.title).started_at) }}</span>
+              <span v-if="getLibLastScan(lib.title).changes > 0" class="text-success text-xs">
+                {{ getLibLastScan(lib.title).changes }} changes
+              </span>
+            </div>
+            <div class="dash-lib-actions">
+              <button class="btn btn-primary btn-sm" @click="startScan(lib)"
+                      title="Check for better poster options">
+                Scan
+              </button>
+              <button class="btn btn-outline btn-sm" @click="startScan(lib, true)"
+                      title="Re-evaluate all items">
+                Force Rescan
+              </button>
+            </div>
+          </div>
+        </div>
+        <p v-if="libraries.length === 0 && !loadingLibraries" class="text-muted">
+          No poster-capable libraries found.
+        </p>
+      </div>
+
+      <!-- Recent Scans -->
+      <div v-if="jobs.length > 0" class="dash-section">
+        <h3 class="dash-section-title">Recent Scans</h3>
+        <div class="dash-jobs">
+          <div v-for="job in jobs" :key="job.job_id" class="dash-job-row">
+            <div class="dash-job-main">
+              <span class="dash-job-lib">{{ job.library }}</span>
+              <span class="badge" :class="'badge-' + job.status">{{ job.status }}</span>
+            </div>
+            <div class="dash-job-meta">
+              <span>{{ job.total_items.toLocaleString() }} items</span>
+              <span class="dash-job-sep">&middot;</span>
+              <span :class="{ 'text-success': job.changes > 0 }">{{ job.changes }} changes</span>
+              <span class="dash-job-sep">&middot;</span>
+              <span>{{ formatRelative(job.started_at) }}</span>
+            </div>
+            <div class="dash-job-actions">
               <router-link
                 :to="{ name: 'scan', query: { job_id: job.job_id } }"
                 class="btn btn-sm btn-outline"
               >View</router-link>
-              <button class="btn btn-sm btn-outline" style="color: var(--error); border-color: var(--error);"
+              <button class="btn btn-sm btn-outline dash-job-delete"
                       @click="deleteJob(job.job_id)"
                       title="Delete this scan">&#10005;</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </template>
   </div>
 </template>
 
@@ -221,6 +263,10 @@ const loadingServers = ref(false)
 const libraries = ref([])
 const loadingLibraries = ref(false)
 const jobs = ref([])
+
+function getLibLastScan(libTitle) {
+  return jobs.value.find((j) => j.library === libTitle && j.status === 'complete')
+}
 
 onMounted(async () => {
   await checkStatus()
@@ -364,6 +410,7 @@ async function disconnect() {
   await api.disconnect()
   setDisconnected()
   libraries.value = []
+  jobs.value = []
   serverPickerActive.value = false
   oauthUsername.value = ''
 }
@@ -405,8 +452,16 @@ async function deleteJob(jobId) {
   }
 }
 
-function formatDate(iso) {
+function formatRelative(iso) {
   if (!iso) return ''
-  return new Date(iso).toLocaleString()
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  if (days < 7) return `${days}d ago`
+  return new Date(iso).toLocaleDateString()
 }
 </script>
