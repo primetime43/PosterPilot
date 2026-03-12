@@ -65,6 +65,8 @@ export default {
       body: JSON.stringify({ dry_run: dryRun, item_keys: itemKeys }),
     }),
   getApplyStatus: (applyId) => request(`/apply/status/${applyId}`),
+  applyCandidate: (jobId, itemKey, candidateKey) =>
+    request(`/apply/${jobId}/${itemKey}/${candidateKey}`, { method: 'POST' }),
 
   // Export & manage
   exportJob: (jobId) => request(`/export/${jobId}`),

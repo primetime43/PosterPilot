@@ -630,10 +630,81 @@ h3 {
     align-items: center;
 }
 
-.result-footer .btn {
+.result-footer .btn:last-child {
     margin-left: auto;
-    color: var(--accent);
+}
+
+/* Candidate picker modal */
+.picker-modal {
+    max-width: 900px;
+    max-height: 85vh;
+}
+
+.picker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 14px;
+}
+
+.picker-card {
+    background: var(--bg-primary);
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    transition: border-color 0.15s;
+}
+
+.picker-card:hover {
     border-color: var(--accent);
+}
+
+.picker-card.picker-selected {
+    border-color: var(--success);
+    background: rgba(34, 197, 94, 0.06);
+}
+
+.picker-card.picker-best {
+    border-color: var(--accent);
+    background: rgba(99, 102, 241, 0.06);
+}
+
+.picker-thumb {
+    width: 100%;
+    aspect-ratio: 2 / 3;
+    object-fit: cover;
+    border-radius: 4px;
+    background: var(--bg-secondary);
+}
+
+.picker-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.picker-score {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.picker-breakdown {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    justify-content: center;
+}
+
+.picker-apply-btn {
+    width: 100%;
+    margin-top: auto;
 }
 
 /* Poster info modal */

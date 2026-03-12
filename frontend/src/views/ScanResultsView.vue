@@ -186,8 +186,12 @@
           <span class="text-muted text-xs">{{ item.num_candidates }} candidate{{ item.num_candidates !== 1 ? 's' : '' }}</span>
           <span v-if="item.applied" class="text-success text-xs">Applied</span>
           <span v-if="item.error" class="error-text text-xs">{{ item.error }}</span>
+          <button class="btn btn-outline btn-sm" @click.stop="openPicker(item)"
+                  title="View all poster candidates" style="color: var(--accent); border-color: var(--accent);">
+            Posters
+          </button>
           <button class="btn btn-outline btn-sm" @click.stop="showPosterInfo(item.rating_key)"
-                  title="View poster metadata">Info</button>
+                  title="View raw poster metadata">Info</button>
         </div>
       </div>
     </div>
@@ -212,6 +216,44 @@
     <p v-if="job && filteredItems.length === 0" class="text-muted">
       No items match the current filter.
     </p>
+
+    <!-- Candidate Picker Modal -->
+    <div v-if="pickerOpen" class="modal-overlay" @click.self="pickerOpen = false">
+      <div class="modal picker-modal" @click.stop>
+        <div class="modal-header">
+          <div>
+            <h3>{{ pickerItem?.title }}{{ pickerItem?.year ? ' (' + pickerItem.year + ')' : '' }}</h3>
+            <p class="text-muted text-xs">{{ pickerItem?.all_candidates?.length || 0 }} poster candidates</p>
+          </div>
+          <button class="modal-close" @click="pickerOpen = false">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="picker-grid">
+            <div v-for="c in pickerItem?.all_candidates || []" :key="c.rating_key"
+                 class="picker-card" :class="{ 'picker-selected': c.selected, 'picker-best': c.rating_key === pickerItem?.best_candidate_key }">
+              <img :src="c.thumb_url" alt="Poster" class="picker-thumb" loading="lazy"
+                   @error="($event.target.style.display = 'none')" />
+              <div class="picker-info">
+                <div class="picker-score">{{ c.score?.toFixed(1) }}</div>
+                <span v-if="c.provider" class="poster-provider">{{ c.provider }}</span>
+                <span v-if="c.selected" class="badge badge-change" style="font-size: 0.6rem">Current</span>
+                <span v-if="c.rating_key === pickerItem?.best_candidate_key" class="badge badge-pending" style="font-size: 0.6rem">Best</span>
+              </div>
+              <div v-if="c.score_breakdown" class="picker-breakdown">
+                <span v-for="(val, key) in c.score_breakdown" :key="key" class="text-muted text-xs">
+                  {{ key }}: {{ typeof val === 'number' ? val.toFixed(1) : val }}
+                </span>
+              </div>
+              <button v-if="!c.selected" class="btn btn-primary btn-sm picker-apply-btn"
+                      :disabled="applyingCandidate === c.rating_key"
+                      @click="applyPickedCandidate(c)">
+                {{ applyingCandidate === c.rating_key ? 'Applying...' : 'Use This' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Confirm Apply Modal -->
     <div v-if="confirmOpen" class="modal-overlay" @click.self="confirmOpen = false">
@@ -306,6 +348,11 @@ const noAltCount = ref(0)
 const confirmOpen = ref(false)
 const confirmMessage = ref('')
 let confirmAction = null
+
+// Candidate picker
+const pickerOpen = ref(false)
+const pickerItem = ref(null)
+const applyingCandidate = ref(null)
 
 // Modal
 const modalOpen = ref(false)
@@ -512,6 +559,39 @@ async function showPosterInfo(ratingKey) {
     modalJson.value = 'Error: ' + e.message
   }
   modalLoading.value = false
+}
+
+function openPicker(item) {
+  pickerItem.value = {
+    ...item,
+    best_candidate_key: item.all_candidates?.find((c) =>
+      item.best_candidate_score != null && c.score === item.best_candidate_score
+    )?.rating_key || null,
+  }
+  applyingCandidate.value = null
+  pickerOpen.value = true
+}
+
+async function applyPickedCandidate(candidate) {
+  if (!job.value || !pickerItem.value) return
+  applyingCandidate.value = candidate.rating_key
+  try {
+    const data = await api.applyCandidate(
+      job.value.job_id,
+      pickerItem.value.rating_key,
+      candidate.rating_key
+    )
+    if (data.applied) {
+      toast.success(`Poster applied for "${data.title}"`)
+      pickerOpen.value = false
+      await loadJob(job.value.job_id)
+    } else if (data.error) {
+      toast.error(data.error)
+    }
+  } catch (e) {
+    toast.error('Failed to apply: ' + e.message)
+  }
+  applyingCandidate.value = null
 }
 
 function actionLabel(action) {

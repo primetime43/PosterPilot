@@ -276,6 +276,17 @@ async def get_scan_status(request: Request, job_id: str):
                 "current_provider": (
                     i.current_poster.provider if i.current_poster else None
                 ),
+                "all_candidates": [
+                    {
+                        "rating_key": c.rating_key,
+                        "thumb_url": c.thumb_url,
+                        "provider": c.provider,
+                        "selected": c.selected,
+                        "score": c.score,
+                        "score_breakdown": c.score_breakdown,
+                    }
+                    for c in i.all_candidates
+                ],
             }
             for i in job.items
         ]
@@ -322,6 +333,75 @@ async def get_apply_status(request: Request, apply_id: str):
         "failed_count": apply_job.failed_count,
         "error": apply_job.error,
     }
+
+
+@router.post("/apply/{job_id}/{item_key}/{candidate_key}")
+async def apply_specific_candidate(
+    request: Request, job_id: str, item_key: str, candidate_key: str
+):
+    """Apply a specific poster candidate to a single item."""
+    plex = request.app.state.plex_client
+    if not plex.is_connected():
+        return JSONResponse(
+            status_code=400, content={"error": "Not connected to Plex"}
+        )
+
+    task_mgr = request.app.state.task_manager
+    job = task_mgr.get_job(job_id)
+    if not job:
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+
+    # Find the scan item
+    scan_item = None
+    for i in job.items:
+        if i.rating_key == item_key:
+            scan_item = i
+            break
+    if not scan_item:
+        return JSONResponse(
+            status_code=404, content={"error": "Item not found in scan"}
+        )
+
+    # Find the candidate
+    candidate = None
+    for c in scan_item.all_candidates:
+        if c.rating_key == candidate_key:
+            candidate = c
+            break
+    if not candidate:
+        return JSONResponse(
+            status_code=404, content={"error": "Candidate not found"}
+        )
+
+    try:
+        item = plex.server.fetchItem(int(item_key))
+        posters = plex.get_item_posters(item)
+
+        target_poster = None
+        for p in posters:
+            if str(getattr(p, "ratingKey", "")) == candidate_key:
+                target_poster = p
+                break
+
+        if not target_poster:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Poster no longer available on Plex"},
+            )
+
+        success = plex.set_poster(item, target_poster)
+        if success:
+            scan_item.best_candidate = candidate
+            scan_item.applied = True
+            scan_item.action = ItemAction.CHANGE
+            task_mgr._save_job_cache(job)
+            return {"applied": True, "title": scan_item.title}
+        else:
+            return JSONResponse(
+                status_code=500, content={"error": "setPoster call failed"}
+            )
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @router.get("/export/{job_id}")
