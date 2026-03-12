@@ -151,7 +151,13 @@
            @click="item.action === 'change' && toggleSelect(item.rating_key)">
         <div class="result-header">
           <div class="result-title">
-            <h4>{{ item.title }}{{ item.year ? ' (' + item.year + ')' : '' }}</h4>
+            <h4 :title="item.title + (item.year ? ' (' + item.year + ')' : '')">{{ item.title }}{{ item.year ? ' (' + item.year + ')' : '' }}</h4>
+          </div>
+          <div class="result-badges">
+            <span class="badge" :class="'badge-' + item.action">{{ actionLabel(item.action) }}</span>
+            <span v-if="item.is_uploaded" class="badge badge-uploaded">Uploaded</span>
+            <span v-if="item.is_likely_broken" class="badge badge-broken" :title="item.broken_reason">Broken</span>
+            <span v-if="item.is_locked" class="badge badge-locked">Locked</span>
           </div>
         </div>
         <div class="poster-compare">
@@ -160,34 +166,28 @@
             <img v-if="item.current_poster_url" :src="item.current_poster_url" alt="Current poster"
                  class="poster-thumb" loading="lazy" @error="($event.target.style.display = 'none')" />
             <div v-else class="poster-placeholder">No image</div>
-            <p v-if="item.current_score != null" class="text-muted text-xs">
-              Score: {{ item.current_score?.toFixed(1) }}
-              <span v-if="item.current_provider"> | {{ item.current_provider }}</span>
-            </p>
+            <div class="poster-details">
+              <span v-if="item.current_score != null" class="poster-score">{{ item.current_score?.toFixed(1) }}</span>
+              <span v-if="item.current_provider" class="poster-provider">{{ item.current_provider }}</span>
+            </div>
           </div>
           <div v-if="item.best_candidate_url && item.action === 'change'" class="poster-arrow">&#8594;</div>
           <div v-if="item.best_candidate_url" class="poster-slot">
             <p class="poster-label">Recommended</p>
             <img :src="item.best_candidate_url" alt="Recommended poster"
                  class="poster-thumb" loading="lazy" @error="($event.target.style.display = 'none')" />
-            <p class="text-muted text-xs">
-              Score: {{ item.best_candidate_score?.toFixed(1) }}
-              <span v-if="item.best_candidate_provider"> | {{ item.best_candidate_provider }}</span>
-            </p>
+            <div class="poster-details">
+              <span class="poster-score poster-score-better">{{ item.best_candidate_score?.toFixed(1) }}</span>
+              <span v-if="item.best_candidate_provider" class="poster-provider">{{ item.best_candidate_provider }}</span>
+            </div>
           </div>
         </div>
-        <div class="result-meta">
-          <span class="text-muted text-xs">{{ item.num_candidates }} candidates</span>
-          <div class="result-badges">
-            <span class="badge" :class="'badge-' + item.action">{{ actionLabel(item.action) }}</span>
-            <span v-if="item.is_uploaded" class="badge badge-uploaded" title="Current poster was uploaded (Kometa/manual)">Uploaded</span>
-            <span v-if="item.is_likely_broken" class="badge badge-broken" :title="item.broken_reason">Broken</span>
-            <span v-if="item.is_locked" class="badge badge-locked" title="Poster field is locked in Plex">Locked</span>
-          </div>
+        <div class="result-footer">
+          <span class="text-muted text-xs">{{ item.num_candidates }} candidate{{ item.num_candidates !== 1 ? 's' : '' }}</span>
           <span v-if="item.applied" class="text-success text-xs">Applied</span>
           <span v-if="item.error" class="error-text text-xs">{{ item.error }}</span>
-          <a href="#" class="info-link" @click.prevent="showPosterInfo(item.rating_key)"
-             title="View poster metadata">Info</a>
+          <button class="btn btn-outline btn-sm" @click.stop="showPosterInfo(item.rating_key)"
+                  title="View poster metadata">Info</button>
         </div>
       </div>
     </div>
