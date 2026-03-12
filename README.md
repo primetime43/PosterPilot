@@ -2,6 +2,10 @@
 
 Automatic poster management for Plex. Scans your libraries, scores available poster options, and applies the best one — so you don't have to manually pick posters one by one.
 
+## Why PosterPilot?
+
+I just wanted to fix broken and ugly posters across my Plex libraries without clicking through every single item. Most Plex metadata managers are way overcomplicated for this — they try to do everything, rely on local file scanning and matching, and most don't even set posters directly in Plex. PosterPilot does one thing well: it connects straight to your Plex server through the API, finds items with better poster options available, and lets you apply them. No external databases, no file matching, no YAML configs. Just sign in, scan, review, and apply.
+
 ## Features
 
 - **Automatic poster scoring** — ranks posters by provider, resolution, and aspect ratio
