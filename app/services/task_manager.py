@@ -98,6 +98,7 @@ def _serialize_job(job: ScanJob) -> dict:
                 "broken_reason": i.broken_reason,
                 "error": i.error,
                 "applied": i.applied,
+                "plex_updated_at": i.plex_updated_at,
             }
             for i in job.items
         ],
@@ -129,6 +130,7 @@ def _deserialize_job(d: dict) -> ScanJob:
                 broken_reason=item_d.get("broken_reason"),
                 error=item_d.get("error"),
                 applied=item_d.get("applied", False),
+                plex_updated_at=item_d.get("plex_updated_at"),
             )
         )
 
@@ -216,6 +218,24 @@ class TaskManager:
                 return None
             return max(self._jobs.values(), key=lambda j: j.started_at or datetime.min)
 
+    def _find_previous_scan(
+        self, library_key: str, exclude_job_id: str
+    ) -> Optional[ScanJob]:
+        """Find the most recent completed scan for a library."""
+        best = None
+        for j in self._jobs.values():
+            if (
+                j.library_key == library_key
+                and j.job_id != exclude_job_id
+                and j.status == ScanStatus.COMPLETE
+                and j.items
+            ):
+                if best is None or (j.completed_at or datetime.min) > (
+                    best.completed_at or datetime.min
+                ):
+                    best = j
+        return best
+
     def start_scan(
         self,
         library_key: str,
@@ -259,23 +279,31 @@ class TaskManager:
             job.status = ScanStatus.SCANNING
             scanner = LibraryScanner(self._plex, self._config)
 
-            try:
-                items = self._plex.get_library_items(job.library_key)
-            except Exception as e:
-                raise ConnectionError(
-                    f"Failed to fetch library items — Plex may have disconnected: {e}"
-                ) from e
-
-            job.total_items = len(items)
+            # Find the most recent completed scan for this library
+            # to enable diff-based scanning (skip unchanged items).
+            previous_results = None
+            if not job.force_refresh:
+                prev_job = self._find_previous_scan(job.library_key, job.job_id)
+                if prev_job:
+                    previous_results = {
+                        i.rating_key: i for i in prev_job.items
+                    }
+                    logger.info(
+                        "Found previous scan with %d items for diff",
+                        len(previous_results),
+                    )
 
             def progress_cb(processed: int, total: int) -> None:
                 job.processed_items = processed
+                job.total_items = total
 
             results = scanner.scan_library(
                 job.library_key,
                 force_refresh=job.force_refresh,
                 progress_callback=progress_cb,
+                previous_results=previous_results,
             )
+            job.total_items = len(results)
 
             # Filter out ignored items — mark them as SKIP so they still
             # appear in results but don't count as actionable changes.

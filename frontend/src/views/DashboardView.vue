@@ -161,21 +161,18 @@
     </div>
 
     <!-- Active Scan Progress -->
-    <div v-if="activeScan" class="card scan-progress-card">
-      <h3>Scanning: {{ activeScan.library }}</h3>
+    <div v-if="scanState.active" class="card scan-progress-card">
+      <h3>Scanning: {{ scanState.library }}</h3>
       <div class="progress-bar">
-        <div class="progress-fill" :style="{ width: (activeScan.progress_pct || 0) + '%' }"></div>
+        <div class="progress-fill" :style="{ width: (scanState.progressPct || 0) + '%' }"></div>
       </div>
       <p class="text-muted">
-        {{ activeScan.processed_items || 0 }} / {{ activeScan.total_items || 0 }} items processed
-        ({{ activeScan.progress_pct || 0 }}%)
+        {{ scanState.processed || 0 }} / {{ scanState.total || 0 }} items processed
+        ({{ scanState.progressPct || 0 }}%)
       </p>
-      <p v-if="activeScan.status === 'complete'" class="text-success">
+      <p v-if="scanState.status === 'complete'" class="text-success">
         Scan complete!
-        {{ activeScan.changes }} changes recommended,
-        {{ activeScan.skipped }} skipped,
-        {{ activeScan.failed }} failed.
-        <router-link :to="{ name: 'scan', query: { job_id: activeScan.job_id } }">View Results</router-link>
+        <router-link :to="{ name: 'scan', query: { job_id: scanState.jobId } }">View Results</router-link>
       </p>
     </div>
 
@@ -217,14 +214,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import api from '../api.js'
 import { useConnection } from '../composables/useConnection.js'
 import { useToast } from '../composables/useToast.js'
 import { useScanProgress } from '../composables/useScanProgress.js'
 
 const toast = useToast()
-const scanProgress = useScanProgress()
+const { state: scanState, startPolling: startScanPolling, checkForActive } = useScanProgress()
 
 const { state: connection, setConnected, setDisconnected, checkStatus } = useConnection()
 
@@ -253,8 +250,6 @@ const loadingServers = ref(false)
 // Libraries & scans
 const libraries = ref([])
 const loadingLibraries = ref(false)
-const activeScan = ref(null)
-let scanPollInterval = null
 const jobs = ref([])
 
 onMounted(async () => {
@@ -262,13 +257,32 @@ onMounted(async () => {
   if (connection.connected) {
     await loadLibraries()
     await loadJobs()
+    checkForActive()
   }
 })
 
 onUnmounted(() => {
   if (oauthPollInterval) clearInterval(oauthPollInterval)
-  if (scanPollInterval) clearInterval(scanPollInterval)
 })
+
+// Watch shared scan state — reload jobs when scan completes
+let toastFired = false
+watch(
+  () => scanState.status,
+  (status) => {
+    if (status === 'complete' && !toastFired) {
+      toastFired = true
+      toast.success('Scan complete: ' + scanState.library)
+      loadJobs()
+    } else if (status === 'failed' && !toastFired) {
+      toastFired = true
+      toast.error('Scan failed: ' + scanState.library)
+      loadJobs()
+    } else if (status === 'scanning') {
+      toastFired = false
+    }
+  }
+)
 
 // OAuth flow
 async function startOAuth() {
@@ -405,42 +419,11 @@ async function loadJobs() {
 async function startScan(lib, forceRefresh = false) {
   try {
     const data = await api.startScan(lib.key, lib.title, forceRefresh)
-    activeScan.value = {
-      job_id: data.job_id,
-      library: lib.title,
-      status: 'scanning',
-      progress_pct: 0,
-      processed_items: 0,
-      total_items: 0,
-    }
-    scanProgress.startPolling(data.job_id, lib.title)
-    pollScanStatus(data.job_id)
+    startScanPolling(data.job_id, lib.title)
+    await loadJobs()
   } catch (e) {
     console.error('Failed to start scan:', e)
   }
-}
-
-function pollScanStatus(jobId) {
-  if (scanPollInterval) clearInterval(scanPollInterval)
-  scanPollInterval = setInterval(async () => {
-    try {
-      const data = await api.getScanStatus(jobId)
-      activeScan.value = data
-      if (data.status === 'complete' || data.status === 'failed') {
-        clearInterval(scanPollInterval)
-        scanPollInterval = null
-        if (data.status === 'complete') {
-          toast.success(`Scan complete: ${data.changes} changes found`)
-        } else {
-          toast.error(`Scan failed: ${data.error || 'Unknown error'}`)
-        }
-        await loadJobs()
-      }
-    } catch {
-      clearInterval(scanPollInterval)
-      scanPollInterval = null
-    }
-  }, 1500)
 }
 
 async function deleteJob(jobId) {

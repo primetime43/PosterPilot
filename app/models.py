@@ -55,6 +55,7 @@ class ScanItem:
     broken_reason: Optional[str] = None
     error: Optional[str] = None
     applied: bool = False
+    plex_updated_at: Optional[int] = None  # Unix timestamp from Plex
 
 
 @dataclass

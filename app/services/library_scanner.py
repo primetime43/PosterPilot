@@ -31,6 +31,21 @@ class LibraryScanner:
         self._extractor = PosterExtractor(plex_client, inspect_images=False)
         self._scorer = PosterScorer(config.scoring)
 
+    @staticmethod
+    def _get_updated_timestamp(item) -> Optional[int]:
+        """Get item's updatedAt as a unix timestamp (int)."""
+        val = getattr(item, "updatedAt", None)
+        if val is None:
+            return None
+        # plexapi returns datetime objects; convert to int timestamp
+        if hasattr(val, "timestamp"):
+            return int(val.timestamp())
+        # Already numeric
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            return None
+
     # Providers considered low quality / likely broken
     _WEAK_PROVIDERS = {None, "", "gracenote", "local"}
     # Providers considered high quality
@@ -52,6 +67,7 @@ class LibraryScanner:
             item_type=item.type,
             current_poster_url=self._plex.get_item_thumb_url(item),
             is_locked=is_locked,
+            plex_updated_at=self._get_updated_timestamp(item),
         )
 
         try:
@@ -172,18 +188,55 @@ class LibraryScanner:
         library_key: str,
         force_refresh: bool = False,
         progress_callback: Optional[Callable[[int, int], None]] = None,
+        previous_results: Optional[dict[str, "ScanItem"]] = None,
     ) -> list[ScanItem]:
         """Scan all items in a library using concurrent API calls.
 
         Uses a thread pool to call item.posters() in parallel, since
         the Plex API has no batch endpoint and each call is independent.
+
+        If previous_results is provided (keyed by rating_key), items whose
+        Plex updatedAt hasn't changed since the previous scan are carried
+        forward without re-scanning, significantly speeding up repeat scans.
         """
         items = self._plex.get_library_items(library_key)
         total = len(items)
-        logger.info("Scanning library with %d items (%d workers)", total, MAX_WORKERS)
 
-        # Pre-allocate results in order; fill them as futures complete
+        # Split items into changed (need scanning) and unchanged (carry forward)
+        items_to_scan: list[tuple[int, object]] = []
         results: list[Optional[ScanItem]] = [None] * total
+        carried = 0
+
+        if previous_results and not force_refresh:
+            for i, item in enumerate(items):
+                key = str(item.ratingKey)
+                prev = previous_results.get(key)
+                plex_updated = self._get_updated_timestamp(item)
+                if (
+                    prev
+                    and prev.plex_updated_at is not None
+                    and plex_updated is not None
+                    and plex_updated == prev.plex_updated_at
+                    and not prev.applied  # re-scan applied items to refresh state
+                ):
+                    # Carry forward — reset applied flag for fresh view
+                    results[i] = prev
+                    carried += 1
+                else:
+                    items_to_scan.append((i, item))
+        else:
+            items_to_scan = list(enumerate(items))
+
+        scan_count = len(items_to_scan)
+        logger.info(
+            "Scanning library: %d total, %d to scan, %d unchanged (carried forward)",
+            total, scan_count, carried,
+        )
+
+        # Report carried-forward items as already processed
+        if carried and progress_callback:
+            progress_callback(carried, total)
+
         processed = 0
         lock = threading.Lock()
 
@@ -192,8 +245,8 @@ class LibraryScanner:
 
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
             futures = {
-                pool.submit(_scan_at, i, item): i
-                for i, item in enumerate(items)
+                pool.submit(_scan_at, idx, item): idx
+                for idx, item in items_to_scan
             }
             for future in as_completed(futures):
                 idx, scan_result = future.result()
@@ -201,7 +254,12 @@ class LibraryScanner:
                 with lock:
                     processed += 1
                     if progress_callback:
-                        progress_callback(processed, total)
+                        progress_callback(carried + processed, total)
+
+        # Report carried-forward items in initial progress
+        if carried and progress_callback:
+            # Already reported incrementally above; just ensure we hit total
+            pass
 
         # Filter out any None (shouldn't happen but be safe)
         final = [r for r in results if r is not None]

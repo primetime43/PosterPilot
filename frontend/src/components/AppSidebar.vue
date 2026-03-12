@@ -33,11 +33,16 @@
 </template>
 
 <script setup>
+import { onMounted } from 'vue'
 import { useConnection } from '../composables/useConnection.js'
 import { useTheme } from '../composables/useTheme.js'
 import { useScanProgress } from '../composables/useScanProgress.js'
 
 const { state: connection } = useConnection()
 const { theme, toggle } = useTheme()
-const { state: scan } = useScanProgress()
+const { state: scan, checkForActive } = useScanProgress()
+
+onMounted(() => {
+  checkForActive()
+})
 </script>
