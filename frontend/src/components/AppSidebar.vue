@@ -10,7 +10,11 @@
       <li><router-link to="/logs">Logs</router-link></li>
     </ul>
     <div class="sidebar-footer">
-      <div class="connection-status" :class="{ connected: connection.connected }">
+      <button class="theme-toggle" @click="toggle" :title="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
+        <span class="theme-toggle-icon">{{ theme === 'dark' ? '&#9788;' : '&#9790;' }}</span>
+        <span>{{ theme === 'dark' ? 'Light mode' : 'Dark mode' }}</span>
+      </button>
+      <div class="connection-status" :class="{ connected: connection.connected }" style="margin-top: 10px">
         <span class="status-dot"></span>
         <span>{{ connection.connected ? 'Connected' : 'Disconnected' }}</span>
       </div>
@@ -20,6 +24,8 @@
 
 <script setup>
 import { useConnection } from '../composables/useConnection.js'
+import { useTheme } from '../composables/useTheme.js'
 
 const { state: connection } = useConnection()
+const { theme, toggle } = useTheme()
 </script>

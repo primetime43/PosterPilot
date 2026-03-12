@@ -1,6 +1,17 @@
-/* PosterPilot - Dark theme UI */
+/* PosterPilot - Themed UI */
 
 :root {
+    --sidebar-width: 220px;
+    --radius: 8px;
+    --accent: #6366f1;
+    --accent-hover: #818cf8;
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --error: #ef4444;
+}
+
+/* Dark theme (default) */
+:root, [data-theme="dark"] {
     --bg-primary: #0f1117;
     --bg-secondary: #1a1d27;
     --bg-card: #21242f;
@@ -9,13 +20,20 @@
     --text-primary: #e4e6ed;
     --text-secondary: #9499a8;
     --text-muted: #6b7084;
-    --accent: #6366f1;
-    --accent-hover: #818cf8;
-    --success: #22c55e;
-    --warning: #f59e0b;
-    --error: #ef4444;
-    --sidebar-width: 220px;
-    --radius: 8px;
+    --shadow: rgba(0, 0, 0, 0.4);
+}
+
+/* Light theme */
+[data-theme="light"] {
+    --bg-primary: #f5f6fa;
+    --bg-secondary: #ffffff;
+    --bg-card: #ffffff;
+    --bg-hover: #eef0f6;
+    --border: #d8dbe5;
+    --text-primary: #1a1d27;
+    --text-secondary: #4b5068;
+    --text-muted: #7a7f96;
+    --shadow: rgba(0, 0, 0, 0.1);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -577,7 +595,7 @@ h3 {
     max-height: 80vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 20px 60px var(--shadow);
 }
 .modal-header {
     display: flex;
@@ -768,7 +786,7 @@ h3 {
     pointer-events: auto;
     animation: toast-in 0.3s ease;
     max-width: 420px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 4px 20px var(--shadow);
 }
 
 .toast-fading {
@@ -788,6 +806,28 @@ h3 {
 @keyframes toast-out {
     from { opacity: 1; transform: translateX(0); }
     to { opacity: 0; transform: translateX(40px); }
+}
+
+/* Theme toggle */
+.theme-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    cursor: pointer;
+    padding: 0;
+    font-family: inherit;
+    transition: color 0.15s;
+}
+
+.theme-toggle:hover { color: var(--text-primary); }
+
+.theme-toggle-icon {
+    font-size: 1rem;
+    line-height: 1;
 }
 
 /* Animations */
