@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import Config, get_data_dir, get_resource_path
 from app.routes import api
+from app.services.ignore_list import IgnoreList
 from app.services.plex_client import PlexClient
 from app.services.task_manager import TaskManager
 
@@ -78,7 +79,8 @@ def create_app(config: Config | None = None) -> FastAPI:
     plex_client = PlexClient(config)
     app.state.config = config
     app.state.plex_client = plex_client
-    app.state.task_manager = TaskManager(plex_client, config)
+    app.state.ignore_list = IgnoreList()
+    app.state.task_manager = TaskManager(plex_client, config, app.state.ignore_list)
 
     # Include API router first (takes priority over static/SPA)
     app.include_router(api.router)

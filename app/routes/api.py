@@ -560,3 +560,56 @@ async def clear_logs(request: Request):
     if LOG_FILE and LOG_FILE.exists():
         LOG_FILE.write_text("", encoding="utf-8")
     return {"cleared": True}
+
+
+# ── Ignore List ──────────────────────────────────────────
+
+
+@router.get("/ignore")
+async def get_ignore_list(request: Request):
+    """Get all ignored items."""
+    ignore = request.app.state.ignore_list
+    items = ignore.get_all()
+    return {
+        "count": len(items),
+        "items": [
+            {"rating_key": k, "title": v.get("title")}
+            for k, v in items.items()
+        ],
+    }
+
+
+@router.post("/ignore")
+async def add_to_ignore_list(request: Request):
+    """Add one or more items to the ignore list.
+
+    Body: { "items": [{ "rating_key": "123", "title": "Movie" }, ...] }
+    """
+    data = await request.json()
+    ignore = request.app.state.ignore_list
+    items = data.get("items", [])
+    if not items:
+        return JSONResponse(
+            status_code=400, content={"error": "No items provided"}
+        )
+    count = ignore.add_bulk(items)
+    return {"added": count, "total": ignore.count()}
+
+
+@router.delete("/ignore/{rating_key}")
+async def remove_from_ignore_list(request: Request, rating_key: str):
+    """Remove an item from the ignore list."""
+    ignore = request.app.state.ignore_list
+    if ignore.remove(rating_key):
+        return {"removed": True, "total": ignore.count()}
+    return JSONResponse(
+        status_code=404, content={"error": "Item not in ignore list"}
+    )
+
+
+@router.delete("/ignore")
+async def clear_ignore_list(request: Request):
+    """Clear the entire ignore list."""
+    ignore = request.app.state.ignore_list
+    ignore.clear()
+    return {"cleared": True}

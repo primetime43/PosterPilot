@@ -100,6 +100,11 @@
                 :disabled="selectedItems.length === 0">
           Deselect All
         </button>
+        <button class="btn btn-outline" @click="ignoreSelected"
+                :disabled="selectedItems.length === 0"
+                style="color: var(--warning); border-color: var(--warning);">
+          Ignore Selected
+        </button>
         <button class="btn btn-outline" @click="exportResults">Export JSON</button>
       </div>
 
@@ -147,8 +152,8 @@
     <!-- Results Grid -->
     <div v-if="filteredItems.length > 0" class="results-grid">
       <div v-for="item in paginatedItems" :key="item.rating_key"
-           class="result-card" :class="['action-' + item.action, { 'card-selected': isSelected(item.rating_key), 'card-selectable': item.action === 'change' }]"
-           @click="item.action === 'change' && toggleSelect(item.rating_key)">
+           class="result-card card-selectable" :class="['action-' + item.action, { 'card-selected': isSelected(item.rating_key) }]"
+           @click="toggleSelect(item.rating_key)">
         <div class="result-header">
           <div class="result-title">
             <h4 :title="item.title + (item.year ? ' (' + item.year + ')' : '')">{{ item.title }}{{ item.year ? ' (' + item.year + ')' : '' }}</h4>
@@ -186,6 +191,12 @@
           <span class="text-muted text-xs">{{ item.num_candidates }} candidate{{ item.num_candidates !== 1 ? 's' : '' }}</span>
           <span v-if="item.applied" class="text-success text-xs">Applied</span>
           <span v-if="item.error" class="error-text text-xs">{{ item.error }}</span>
+          <button v-if="!item.applied" class="btn btn-outline btn-sm"
+                  @click.stop="ignoreSingle(item)"
+                  title="Never suggest changes for this item"
+                  style="color: var(--warning); border-color: var(--warning);">
+            Ignore
+          </button>
           <button class="btn btn-outline btn-sm" @click.stop="openPicker(item)"
                   title="View all poster candidates" style="color: var(--accent); border-color: var(--accent);">
             Posters
@@ -442,9 +453,7 @@ function toggleSelect(key) {
 }
 
 function selectAll() {
-  selectedItems.value = filteredItems.value
-    .filter((i) => i.action === 'change' && !i.applied)
-    .map((i) => i.rating_key)
+  selectedItems.value = filteredItems.value.map((i) => i.rating_key)
 }
 
 function deselectAll() {
@@ -592,6 +601,38 @@ async function applyPickedCandidate(candidate) {
     toast.error('Failed to apply: ' + e.message)
   }
   applyingCandidate.value = null
+}
+
+async function ignoreSingle(item) {
+  try {
+    await api.addToIgnoreList([{ rating_key: item.rating_key, title: item.title }])
+    item.action = 'skip'
+    toast.info(`"${item.title}" added to ignore list`)
+    filterItems()
+  } catch (e) {
+    toast.error('Failed to ignore: ' + e.message)
+  }
+}
+
+async function ignoreSelected() {
+  const items = allItems.value
+    .filter((i) => selectedItems.value.includes(i.rating_key))
+    .map((i) => ({ rating_key: i.rating_key, title: i.title }))
+  if (items.length === 0) return
+  try {
+    const data = await api.addToIgnoreList(items)
+    // Update local state to reflect the ignore
+    for (const item of allItems.value) {
+      if (selectedItems.value.includes(item.rating_key) && item.action === 'change') {
+        item.action = 'skip'
+      }
+    }
+    selectedItems.value = []
+    filterItems()
+    toast.info(`${data.added} items added to ignore list`)
+  } catch (e) {
+    toast.error('Failed to ignore: ' + e.message)
+  }
 }
 
 function actionLabel(action) {

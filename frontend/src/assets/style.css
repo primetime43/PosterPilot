@@ -943,6 +943,30 @@ h3 {
     to { opacity: 0; transform: translateX(40px); }
 }
 
+/* Ignore list */
+.ignore-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.ignore-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+.ignore-title {
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
 /* Server accordion */
 .accordion-arrow {
     font-size: 1rem;

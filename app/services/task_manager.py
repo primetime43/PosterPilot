@@ -158,9 +158,10 @@ def _deserialize_job(d: dict) -> ScanJob:
 class TaskManager:
     """Manages background scan/apply jobs."""
 
-    def __init__(self, plex_client: PlexClient, config: Config):
+    def __init__(self, plex_client: PlexClient, config: Config, ignore_list=None):
         self._plex = plex_client
         self._config = config
+        self._ignore_list = ignore_list
         self._jobs: dict[str, ScanJob] = {}
         self._apply_jobs: dict[str, ApplyJob] = {}
         self._lock = threading.Lock()
@@ -275,6 +276,14 @@ class TaskManager:
                 force_refresh=job.force_refresh,
                 progress_callback=progress_cb,
             )
+
+            # Filter out ignored items — mark them as SKIP so they still
+            # appear in results but don't count as actionable changes.
+            if self._ignore_list:
+                for item in results:
+                    if self._ignore_list.is_ignored(item.rating_key):
+                        if item.action == ItemAction.CHANGE:
+                            item.action = ItemAction.SKIP
 
             job.items = results
             job.status = ScanStatus.COMPLETE

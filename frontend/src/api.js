@@ -80,6 +80,14 @@ export default {
     request(`/logs?lines=${lines}${level ? '&level=' + level : ''}`),
   clearLogs: () => request('/logs/clear', { method: 'POST' }),
 
+  // Ignore list
+  getIgnoreList: () => request('/ignore'),
+  addToIgnoreList: (items) =>
+    request('/ignore', { method: 'POST', body: JSON.stringify({ items }) }),
+  removeFromIgnoreList: (ratingKey) =>
+    request(`/ignore/${ratingKey}`, { method: 'DELETE' }),
+  clearIgnoreList: () => request('/ignore', { method: 'DELETE' }),
+
   // Config
   getConfig: () => request('/config'),
   updateConfig: (data) =>

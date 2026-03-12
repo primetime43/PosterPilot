@@ -133,6 +133,34 @@
         {{ saving ? 'Saving...' : 'Save Settings' }}
       </button>
     </div>
+
+    <!-- Ignore List -->
+    <div class="card">
+      <div class="card-header">
+        <h3>Ignore List</h3>
+        <span class="text-muted text-xs">{{ ignoreItems.length }} items</span>
+      </div>
+      <p class="text-muted" style="margin-bottom: 12px; font-size: 0.85rem">
+        Items on this list will be skipped during scans — no poster changes will be suggested for them.
+      </p>
+      <div v-if="ignoreItems.length > 0" class="ignore-list">
+        <div v-for="item in ignoreItems" :key="item.rating_key" class="ignore-item">
+          <span class="ignore-title">{{ item.title || item.rating_key }}</span>
+          <span class="text-muted text-xs">{{ item.rating_key }}</span>
+          <button class="btn btn-outline btn-sm" @click="removeIgnored(item.rating_key)"
+                  style="color: var(--error); border-color: var(--error); margin-left: auto;">
+            Remove
+          </button>
+        </div>
+      </div>
+      <p v-else class="text-muted text-xs">No ignored items.</p>
+      <div v-if="ignoreItems.length > 0" class="card-actions">
+        <button class="btn btn-outline btn-sm" @click="clearIgnoreList"
+                style="color: var(--error); border-color: var(--error);">
+          Clear All
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -177,6 +205,9 @@ const whitelistStr = ref('')
 const blacklistStr = ref('')
 const saving = ref(false)
 
+// Ignore list
+const ignoreItems = ref([])
+
 onMounted(async () => {
   try {
     const data = await api.getConfig()
@@ -190,6 +221,7 @@ onMounted(async () => {
   } catch (e) {
     console.error('Failed to load config:', e)
   }
+  await loadIgnoreList()
 })
 
 async function save() {
@@ -218,5 +250,32 @@ async function save() {
     toast.error('Failed to save: ' + e.message)
   }
   saving.value = false
+}
+
+async function loadIgnoreList() {
+  try {
+    const data = await api.getIgnoreList()
+    ignoreItems.value = data.items || []
+  } catch {}
+}
+
+async function removeIgnored(ratingKey) {
+  try {
+    await api.removeFromIgnoreList(ratingKey)
+    ignoreItems.value = ignoreItems.value.filter((i) => i.rating_key !== ratingKey)
+    toast.info('Item removed from ignore list')
+  } catch (e) {
+    toast.error('Failed to remove: ' + e.message)
+  }
+}
+
+async function clearIgnoreList() {
+  try {
+    await api.clearIgnoreList()
+    ignoreItems.value = []
+    toast.info('Ignore list cleared')
+  } catch (e) {
+    toast.error('Failed to clear: ' + e.message)
+  }
 }
 </script>
