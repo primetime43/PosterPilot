@@ -83,11 +83,11 @@
       </div>
 
       <div class="card-actions">
-        <button class="btn btn-primary" @click="applyAll(false)"
+        <button class="btn btn-primary" @click="confirmApplyAll"
                 :disabled="applying || unappliedChanges === 0">
           Apply All Changes
         </button>
-        <button class="btn btn-outline" @click="applySelected(false)"
+        <button class="btn btn-outline" @click="confirmApplySelected"
                 :disabled="applying || selectedItems.length === 0">
           Apply Selected ({{ selectedItems.length }})
         </button>
@@ -174,6 +174,29 @@
       No items match the current filter.
     </p>
 
+    <!-- Confirm Apply Modal -->
+    <div v-if="confirmOpen" class="modal-overlay" @click.self="confirmOpen = false">
+      <div class="modal" @click.stop style="max-width: 440px">
+        <div class="modal-header">
+          <h3>Confirm Apply</h3>
+          <button class="modal-close" @click="confirmOpen = false">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p>{{ confirmMessage }}</p>
+          <p class="text-muted text-xs" style="margin-top: 8px">
+            This will replace posters on your Plex server. This action cannot be undone.
+          </p>
+          <div style="display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end">
+            <button class="btn btn-outline btn-sm" @click="confirmOpen = false">Cancel</button>
+            <button class="btn btn-primary btn-sm" @click="confirmProceed"
+                    style="background: var(--error); border-color: var(--error);">
+              Apply
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Poster Info Modal -->
     <div v-if="modalOpen" class="modal-overlay" @click.self="modalOpen = false" @keydown.escape="modalOpen = false">
       <div class="modal" @click.stop>
@@ -226,6 +249,11 @@ const lockedCount = ref(0)
 const uploadedCount = ref(0)
 const brokenCount = ref(0)
 const noAltCount = ref(0)
+
+// Confirm dialog
+const confirmOpen = ref(false)
+const confirmMessage = ref('')
+let confirmAction = null
 
 // Modal
 const modalOpen = ref(false)
@@ -316,6 +344,24 @@ function selectAll() {
 
 function deselectAll() {
   selectedItems.value = []
+}
+
+function confirmApplyAll() {
+  confirmMessage.value = `Apply poster changes to ${unappliedChanges.value} items?`
+  confirmAction = () => applyAll(false)
+  confirmOpen.value = true
+}
+
+function confirmApplySelected() {
+  confirmMessage.value = `Apply poster changes to ${selectedItems.value.length} selected items?`
+  confirmAction = () => applySelected(false)
+  confirmOpen.value = true
+}
+
+function confirmProceed() {
+  confirmOpen.value = false
+  if (confirmAction) confirmAction()
+  confirmAction = null
 }
 
 async function applyAll(dryRun) {
