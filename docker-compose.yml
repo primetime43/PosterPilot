@@ -1,0 +1,16 @@
+services:
+  posterpilot:
+    build: .
+    container_name: posterpilot
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PLEX_URL=${PLEX_URL:-}
+      - PLEX_TOKEN=${PLEX_TOKEN:-}
+      - POSTERPILOT_HOST=0.0.0.0
+      - POSTERPILOT_PORT=8888
+      - POSTERPILOT_LOG_LEVEL=INFO
+      - POSTERPILOT_DOCKER=true
+    restart: unless-stopped

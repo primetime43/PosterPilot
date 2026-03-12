@@ -1,0 +1,372 @@
+"""API routes for PosterPilot.
+
+Provides JSON endpoints for frontend HTMX/Alpine interactions:
+- Plex connection management
+- Library listing
+- Scan jobs (start, status, results)
+- Apply poster changes
+- Configuration
+- Export results
+"""
+
+import logging
+from typing import Optional
+
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+
+from app.models import ItemAction
+
+logger = logging.getLogger("posterpilot.api")
+router = APIRouter(prefix="/api")
+
+
+@router.post("/oauth/start")
+async def start_oauth(request: Request):
+    """Start Plex OAuth login flow.
+
+    Returns an oauth_url that the frontend should open in a popup
+    for the user to sign in at plex.tv.
+    """
+    plex_client = request.app.state.plex_client
+    result = plex_client.start_oauth()
+    return result
+
+
+@router.get("/oauth/check")
+async def check_oauth(request: Request):
+    """Poll OAuth login status.
+
+    Frontend should call this every ~2 seconds after opening the
+    OAuth popup. Returns status: waiting | authenticated | expired | error.
+    """
+    plex_client = request.app.state.plex_client
+    result = plex_client.check_oauth()
+    return result
+
+
+@router.post("/oauth/cancel")
+async def cancel_oauth(request: Request):
+    """Cancel an in-progress OAuth session."""
+    request.app.state.plex_client.cancel_oauth()
+    return {"status": "cancelled"}
+
+
+@router.get("/servers")
+async def list_servers(request: Request):
+    """List Plex servers on the authenticated account.
+
+    Only available after successful OAuth login.
+    """
+    plex_client = request.app.state.plex_client
+    if not plex_client.account:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Not authenticated. Complete OAuth login first."},
+        )
+
+    try:
+        servers = plex_client.get_servers()
+        # Deduplicate by machine_id, prefer local non-relay connections
+        seen: dict[str, dict] = {}
+        for s in servers:
+            key = s.machine_id
+            entry = {
+                "name": s.name,
+                "uri": s.uri,
+                "local": s.local,
+                "relay": s.relay,
+                "owned": s.owned,
+                "machine_id": s.machine_id,
+            }
+            if key not in seen:
+                seen[key] = entry
+            else:
+                # Prefer local, non-relay connections for display
+                if s.local and not s.relay and not seen[key]["local"]:
+                    seen[key] = entry
+        return {"servers": list(seen.values())}
+    except Exception as e:
+        logger.error("Error listing servers: %s", e)
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.post("/connect/server")
+async def connect_to_server(request: Request):
+    """Connect to a specific Plex server by machine ID (after OAuth)."""
+    data = await request.json()
+    machine_id = data.get("machine_id", "")
+
+    plex_client = request.app.state.plex_client
+    status = plex_client.connect_to_resource(machine_id)
+
+    return {
+        "connected": status.connected,
+        "server_name": status.server_name,
+        "version": status.version,
+        "error": status.error,
+    }
+
+
+@router.post("/connect")
+async def connect_plex(request: Request):
+    """Connect to Plex server with URL + token directly (manual method)."""
+    data = await request.json()
+    base_url = data.get("base_url", "").strip().rstrip("/")
+    token = data.get("token", "").strip()
+
+    plex_client = request.app.state.plex_client
+    config = request.app.state.config
+
+    status = plex_client.connect(base_url, token)
+
+    if status.connected:
+        config.plex.base_url = base_url
+        config.plex.token = token
+        config.save()
+
+    return {
+        "connected": status.connected,
+        "server_name": status.server_name,
+        "version": status.version,
+        "error": status.error,
+    }
+
+
+@router.post("/disconnect")
+async def disconnect_plex(request: Request):
+    """Disconnect from Plex server."""
+    request.app.state.plex_client.disconnect()
+    return {"connected": False}
+
+
+@router.get("/status")
+async def connection_status(request: Request):
+    """Get current Plex connection status."""
+    plex = request.app.state.plex_client
+    if plex.is_connected():
+        return {
+            "connected": True,
+            "server_name": plex.server.friendlyName,
+            "version": plex.server.version,
+        }
+    return {"connected": False}
+
+
+@router.get("/libraries")
+async def list_libraries(request: Request):
+    """List available Plex libraries."""
+    plex = request.app.state.plex_client
+    if not plex.is_connected():
+        return JSONResponse(
+            status_code=400, content={"error": "Not connected to Plex"}
+        )
+
+    try:
+        libraries = plex.get_libraries()
+        config = request.app.state.config
+
+        # Apply whitelist/blacklist filtering
+        whitelist = config.app.whitelisted_libraries
+        blacklist = config.app.blacklisted_libraries
+
+        if whitelist:
+            libraries = [l for l in libraries if l.title in whitelist]
+        if blacklist:
+            libraries = [l for l in libraries if l.title not in blacklist]
+
+        return {
+            "libraries": [
+                {
+                    "key": l.key,
+                    "title": l.title,
+                    "type": l.type,
+                    "item_count": l.item_count,
+                }
+                for l in libraries
+            ]
+        }
+    except Exception as e:
+        logger.error("Error listing libraries: %s", e)
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.post("/scan")
+async def start_scan(request: Request):
+    """Start a background scan job for a library."""
+    data = await request.json()
+    library_key = data.get("library_key")
+    library_title = data.get("library_title", "Unknown")
+    force_refresh = data.get("force_refresh", False)
+
+    plex = request.app.state.plex_client
+    if not plex.is_connected():
+        return JSONResponse(
+            status_code=400, content={"error": "Not connected to Plex"}
+        )
+
+    task_mgr = request.app.state.task_manager
+    job_id = task_mgr.start_scan(library_key, library_title, force_refresh)
+
+    return {"job_id": job_id, "status": "started"}
+
+
+@router.get("/scan/{job_id}")
+async def get_scan_status(request: Request, job_id: str):
+    """Get the status and results of a scan job."""
+    task_mgr = request.app.state.task_manager
+    job = task_mgr.get_job(job_id)
+
+    if not job:
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+
+    result = {
+        "job_id": job.job_id,
+        "status": job.status.value,
+        "library": job.library_title,
+        "total_items": job.total_items,
+        "processed_items": job.processed_items,
+        "progress_pct": job.progress_pct,
+        "changes": job.changes_count,
+        "skipped": job.skipped_count,
+        "locked": job.locked_count,
+        "failed": job.failed_count,
+        "error": job.error,
+    }
+
+    # Include items if scan is complete
+    if job.status.value == "complete":
+        result["items"] = [
+            {
+                "rating_key": i.rating_key,
+                "title": i.title,
+                "year": i.year,
+                "item_type": i.item_type,
+                "action": i.action.value,
+                "current_poster_url": i.current_poster_url,
+                "best_candidate_url": (
+                    i.best_candidate.thumb_url if i.best_candidate else None
+                ),
+                "best_candidate_provider": (
+                    i.best_candidate.provider if i.best_candidate else None
+                ),
+                "best_candidate_score": (
+                    i.best_candidate.score if i.best_candidate else None
+                ),
+                "current_score": (
+                    i.current_poster.score if i.current_poster else None
+                ),
+                "is_locked": i.is_locked,
+                "applied": i.applied,
+                "error": i.error,
+                "num_candidates": len(i.all_candidates),
+            }
+            for i in job.items
+        ]
+
+    return result
+
+
+@router.post("/apply/{job_id}")
+async def apply_changes(request: Request, job_id: str):
+    """Start a background apply job for poster changes."""
+    data = await request.json()
+    dry_run = data.get("dry_run", True)
+    item_keys: Optional[list[str]] = data.get("item_keys")
+
+    task_mgr = request.app.state.task_manager
+    apply_id = task_mgr.start_apply(job_id, dry_run=dry_run, item_keys=item_keys)
+
+    if not apply_id:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "No applicable changes found or job not complete"},
+        )
+
+    return {"apply_id": apply_id, "status": "started"}
+
+
+@router.get("/apply/status/{apply_id}")
+async def get_apply_status(request: Request, apply_id: str):
+    """Poll the status of a background apply job."""
+    task_mgr = request.app.state.task_manager
+    apply_job = task_mgr.get_apply_job(apply_id)
+
+    if not apply_job:
+        return JSONResponse(status_code=404, content={"error": "Apply job not found"})
+
+    return {
+        "apply_id": apply_job.apply_id,
+        "status": apply_job.status.value,
+        "dry_run": apply_job.dry_run,
+        "total_items": apply_job.total_items,
+        "processed_items": apply_job.processed_items,
+        "progress_pct": apply_job.progress_pct,
+        "applied_count": apply_job.applied_count,
+        "failed_count": apply_job.failed_count,
+        "error": apply_job.error,
+    }
+
+
+@router.get("/export/{job_id}")
+async def export_results(request: Request, job_id: str):
+    """Export scan results as JSON."""
+    task_mgr = request.app.state.task_manager
+    data = task_mgr.export_job(job_id)
+    if not data:
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+    return data
+
+
+@router.get("/jobs")
+async def list_jobs(request: Request):
+    """List all scan jobs."""
+    task_mgr = request.app.state.task_manager
+    jobs = task_mgr.get_all_jobs()
+    return {
+        "jobs": [
+            {
+                "job_id": j.job_id,
+                "library": j.library_title,
+                "status": j.status.value,
+                "progress_pct": j.progress_pct,
+                "total_items": j.total_items,
+                "changes": j.changes_count,
+                "started_at": j.started_at.isoformat() if j.started_at else None,
+            }
+            for j in jobs
+        ]
+    }
+
+
+@router.get("/config")
+async def get_config(request: Request):
+    """Get current configuration."""
+    config = request.app.state.config
+    data = config.model_dump()
+    # Mask the token for security
+    if data.get("plex", {}).get("token"):
+        data["plex"]["token"] = "***" + data["plex"]["token"][-4:]
+    return data
+
+
+@router.post("/config")
+async def update_config(request: Request):
+    """Update configuration."""
+    data = await request.json()
+    config = request.app.state.config
+
+    # Update scoring config
+    if "scoring" in data:
+        for key, val in data["scoring"].items():
+            if hasattr(config.scoring, key):
+                setattr(config.scoring, key, val)
+
+    # Update app config
+    if "app" in data:
+        for key, val in data["app"].items():
+            if hasattr(config.app, key):
+                setattr(config.app, key, val)
+
+    config.save()
+    return {"success": True}

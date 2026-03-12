@@ -1,0 +1,28 @@
+[plex]
+base_url = ""
+token = ""
+timeout = 30
+
+[scoring]
+min_width = 300
+min_height = 450
+preferred_aspect_ratio = 0.6667
+aspect_ratio_tolerance = 0.15
+prefer_provider_posters = true
+provider_priority = ["tmdb", "tvdb", "gracenote", "local", "upload"]
+resolution_weight = 1.0
+aspect_ratio_weight = 1.5
+provider_weight = 1.0
+penalize_landscape = true
+landscape_penalty = -5.0
+
+[app]
+host = "0.0.0.0"
+port = 8888
+dry_run = true
+skip_locked = true
+force_replace = false
+log_level = "INFO"
+open_browser = true
+whitelisted_libraries = []
+blacklisted_libraries = []

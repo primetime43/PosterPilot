@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PosterPilot{% block title_suffix %}{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.14.3/dist/cdn.min.js"></script>
+</head>
+<body>
+    <nav class="sidebar">
+        <div class="sidebar-brand">
+            <h1>PosterPilot</h1>
+        </div>
+        <ul class="sidebar-nav">
+            <li><a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Dashboard</a></li>
+            <li><a href="/scan" class="{% if request.url.path == '/scan' %}active{% endif %}">Scan Results</a></li>
+            <li><a href="/settings" class="{% if request.url.path == '/settings' %}active{% endif %}">Settings</a></li>
+            <li><a href="/logs" class="{% if request.url.path == '/logs' %}active{% endif %}">Logs</a></li>
+        </ul>
+        <div class="sidebar-footer">
+            <div id="connection-indicator" class="connection-status {{ 'connected' if connected else 'disconnected' }}">
+                <span class="status-dot"></span>
+                <span>{{ 'Connected' if connected else 'Disconnected' }}</span>
+            </div>
+        </div>
+    </nav>
+
+    <main class="content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

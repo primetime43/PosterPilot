@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Logs{% endblock %}
+
+{% block content %}
+<div x-data="logsPage()" x-init="init()">
+    <div class="page-header">
+        <h2>Scan History</h2>
+        <button class="btn btn-outline btn-sm" @click="refresh()">Refresh</button>
+    </div>
+
+    <div x-show="jobs.length === 0" class="card">
+        <p class="text-muted">No scan history yet.</p>
+    </div>
+
+    <template x-for="job in jobs" :key="job.job_id">
+        <div class="card">
+            <div class="card-header">
+                <h4 x-text="job.library"></h4>
+                <span class="badge" :class="'badge-' + job.status" x-text="job.status"></span>
+            </div>
+            <div class="log-details">
+                <p>
+                    <strong>Job ID:</strong> <span x-text="job.job_id"></span> |
+                    <strong>Items:</strong> <span x-text="job.total_items"></span> |
+                    <strong>Changes:</strong> <span x-text="job.changes"></span> |
+                    <strong>Started:</strong> <span x-text="formatDate(job.started_at)"></span>
+                </p>
+            </div>
+            <div class="card-actions">
+                <a :href="'/scan?job_id=' + job.job_id" class="btn btn-sm btn-outline">View Results</a>
+            </div>
+        </div>
+    </template>
+</div>
+
+<script>
+function logsPage() {
+    return {
+        jobs: [],
+        async init() { await this.refresh(); },
+        async refresh() {
+            try {
+                const res = await fetch('/api/jobs');
+                const data = await res.json();
+                this.jobs = (data.jobs || []).reverse();
+            } catch (e) {}
+        },
+        formatDate(iso) {
+            if (!iso) return '';
+            return new Date(iso).toLocaleString();
+        }
+    }
+}
+</script>
+{% endblock %}
