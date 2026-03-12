@@ -249,10 +249,22 @@ class TaskManager:
             return
 
         try:
+            # Verify Plex is still connected before starting
+            if not self._plex.is_connected():
+                raise ConnectionError(
+                    "Plex server is not connected. Reconnect and try again."
+                )
+
             job.status = ScanStatus.SCANNING
             scanner = LibraryScanner(self._plex, self._config)
 
-            items = self._plex.get_library_items(job.library_key)
+            try:
+                items = self._plex.get_library_items(job.library_key)
+            except Exception as e:
+                raise ConnectionError(
+                    f"Failed to fetch library items — Plex may have disconnected: {e}"
+                ) from e
+
             job.total_items = len(items)
 
             def progress_cb(processed: int, total: int) -> None:
@@ -270,6 +282,11 @@ class TaskManager:
             self._save_job_cache(job)
             logger.info("Scan job %s completed: %d items", job_id, len(results))
 
+        except ConnectionError as e:
+            job.status = ScanStatus.FAILED
+            job.error = str(e)
+            job.completed_at = datetime.now(timezone.utc)
+            logger.error("Scan job %s lost connection: %s", job_id, e)
         except Exception as e:
             job.status = ScanStatus.FAILED
             job.error = str(e)
@@ -344,6 +361,11 @@ class TaskManager:
             return
 
         try:
+            if not dry_run and not self._plex.is_connected():
+                raise ConnectionError(
+                    "Plex server is not connected. Reconnect and try again."
+                )
+
             apply_job.status = ScanStatus.SCANNING  # reuse as "in progress"
             applier = PosterApplier(self._plex)
 

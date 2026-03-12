@@ -37,7 +37,7 @@
         </button>
         <button class="summary-item summary-change" :class="{ 'summary-active': filterAction === 'change' }"
                 @click="filterAction = 'change'; filterItems()">
-          <span class="summary-value">{{ job.changes || 0 }}</span>
+          <span class="summary-value">{{ unappliedChanges }}</span>
           <span class="summary-label">Changes</span>
         </button>
         <button class="summary-item summary-skip" :class="{ 'summary-active': filterAction === 'skip' }"
@@ -84,7 +84,7 @@
 
       <div class="card-actions">
         <button class="btn btn-primary" @click="applyAll(false)"
-                :disabled="applying || (job.changes || 0) === 0">
+                :disabled="applying || unappliedChanges === 0">
           Apply All Changes
         </button>
         <button class="btn btn-outline" @click="applySelected(false)"
@@ -92,7 +92,7 @@
           Apply Selected ({{ selectedItems.length }})
         </button>
         <button class="btn btn-outline" @click="applyAll(true)"
-                :disabled="applying || (job.changes || 0) === 0">
+                :disabled="applying || unappliedChanges === 0">
           Dry Run All
         </button>
         <button class="btn btn-outline" @click="exportResults">Export JSON</button>
@@ -190,11 +190,19 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '../api.js'
 
 const route = useRoute()
+
+// Re-load when the route query changes (e.g. navigating back from dashboard with a new job_id)
+watch(
+  () => route.query.job_id,
+  (newId) => {
+    if (newId) loadJob(newId)
+  }
+)
 
 const job = ref(null)
 const allItems = ref([])
@@ -207,6 +215,10 @@ const applyResult = ref(null)
 const applyProgress = ref({ total: 0, processed: 0, pct: 0, applied: 0, failed: 0 })
 let applyPollInterval = null
 
+const unappliedChanges = computed(() =>
+  allItems.value.filter((i) => i.action === 'change' && !i.applied).length
+)
+
 const lockedCount = ref(0)
 const uploadedCount = ref(0)
 const brokenCount = ref(0)
@@ -218,23 +230,31 @@ const modalTitle = ref('')
 const modalJson = ref('')
 const modalLoading = ref(false)
 
-onMounted(async () => {
+onMounted(() => {
+  loadInitial()
+})
+
+async function loadInitial() {
   const jobId = route.query.job_id
   if (jobId) {
     await loadJob(jobId)
   } else {
-    try {
-      const data = await api.getJobs()
-      if (data.jobs && data.jobs.length > 0) {
-        const sorted = [...data.jobs].reverse()
-        const latest = sorted[0]
-        if (latest.status === 'complete') {
-          await loadJob(latest.job_id)
-        }
-      }
-    } catch {}
+    await loadLatestJob()
   }
-})
+}
+
+async function loadLatestJob() {
+  try {
+    const data = await api.getJobs()
+    if (data.jobs && data.jobs.length > 0) {
+      const sorted = [...data.jobs].reverse()
+      const latest = sorted[0]
+      if (latest.status === 'complete') {
+        await loadJob(latest.job_id)
+      }
+    }
+  } catch {}
+}
 
 onUnmounted(() => {
   if (applyPollInterval) clearInterval(applyPollInterval)
