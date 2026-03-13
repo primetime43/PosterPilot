@@ -12,11 +12,15 @@ I just wanted to fix broken and ugly posters across my Plex libraries without cl
 - **Preview before applying** — see current vs. recommended posters side by side
 - **Plex OAuth sign-in** — sign in with your Plex account, no need to find your token
 - **Batch processing** — scan and update entire libraries at once
+- **Parallel scanning & applying** — 8 concurrent workers for scanning, 4 for applying
 - **Dry-run mode** — see what would change before applying anything
 - **Live progress** — background scanning and applying with real-time progress bars
-- **Configurable** — adjust scoring weights, provider priority, and filtering from the UI
+- **Diff-based rescanning** — skip unchanged items when re-scanning a library
+- **Thumbnail caching** — optional local cache for poster thumbnails to reduce Plex API load
+- **Ignore list** — permanently skip specific items from future scans
+- **Configurable** — adjust scoring weights, provider priority, library filters, and more from the UI
 - **Encrypted secrets** — Plex tokens and server URLs are stored encrypted on disk, never in plaintext
-- **Dark theme UI**
+- **Dark & light themes**
 
 ## Getting Started
 
@@ -35,15 +39,36 @@ Opens at **http://127.0.0.1:8888**. On Windows you can also just double-click `s
 
 ### Docker
 
+Available on [Docker Hub](https://hub.docker.com/r/primetime43/posterpilot).
+
+```yaml
+services:
+  posterpilot:
+    image: primetime43/posterpilot:latest
+    container_name: posterpilot
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PLEX_URL=          # optional
+      - PLEX_TOKEN=        # optional
+    restart: unless-stopped
+```
+
+Or build locally:
+
 ```bash
 docker compose up -d
 ```
 
-Access at **http://localhost:8888**. Optionally set `PLEX_URL` and `PLEX_TOKEN` environment variables in `docker-compose.yml`.
+Access at **http://localhost:8888**.
 
 ### Windows EXE
 
-Run `build.bat` to build a standalone EXE with PyInstaller. The EXE launches the web server and opens your browser.
+Download the latest `PosterPilot-x.x.x.exe` from [Releases](https://github.com/primetime43/PosterPilot/releases). The EXE launches the web server and opens your browser automatically.
+
+To build yourself, run `build.bat` or `pyinstaller posterpilot.spec`.
 
 ## How to Use
 
@@ -57,22 +82,39 @@ Run `build.bat` to build a standalone EXE with PyInstaller. The EXE launches the
 
 ## Configuration
 
-All settings are configurable from the **Settings** page in the UI. Non-sensitive settings are saved to `data/config.toml`. Sensitive data (Plex token, server URL) is encrypted using Fernet (AES-128-CBC + HMAC-SHA256) and stored in `data/config.enc`. The encryption key is derived from your machine's identity — no key files to manage.
+All settings are configurable from the **Settings** page in the UI, organized into tabs:
 
-For Docker, you can also use environment variables:
+| Tab | What it controls |
+|---|---|
+| **Connection** | Plex server URL, token, timeout |
+| **General** | Host, port, log level, dry run, skip locked, scan retention |
+| **Scoring** | Weights, provider priority, aspect ratio, landscape penalty |
+| **Libraries** | Whitelist and blacklist library filters |
+| **Cache** | Thumbnail caching toggle and expiry |
+| **Ignore List** | Items to permanently skip during scans |
+
+Non-sensitive settings are saved to `data/config.toml`. Sensitive data (Plex token, server URL) is encrypted using Fernet (AES-128-CBC + HMAC-SHA256) and stored in `data/config.enc`. The encryption key is derived from your machine's identity — no key files to manage.
+
+### Environment Variables
+
+For Docker deployments, you can override settings with environment variables:
 
 | Variable | Description | Default |
 |---|---|---|
 | `PLEX_URL` | Plex server URL | _(empty)_ |
 | `PLEX_TOKEN` | Plex token | _(empty)_ |
+| `PLEX_TIMEOUT` | API timeout in seconds | `30` |
+| `POSTERPILOT_HOST` | Bind address | `0.0.0.0` |
 | `POSTERPILOT_PORT` | Web server port | `8888` |
-| `POSTERPILOT_DATA_DIR` | Data directory | `./data` |
+| `POSTERPILOT_DRY_RUN` | Dry run mode | `true` |
+| `POSTERPILOT_LOG_LEVEL` | Log level | `INFO` |
+| `POSTERPILOT_DATA_DIR` | Data directory path | `./data` |
 
 ## Poster Scoring
 
 Posters are ranked automatically using:
 
-- **Provider priority** — TMDB > TVDB > Gracenote > Local > Upload
+- **Provider priority** — TMDB > TVDB > Gracenote > Local > Upload (configurable)
 - **Aspect ratio** — prefers standard 2:3 poster ratio, penalizes landscape images
 - **Resolution** — higher resolution scores better
 - **Stability bonus** — slight preference for the current poster to avoid unnecessary changes
@@ -92,4 +134,3 @@ A change is only recommended when the best candidate scores meaningfully higher 
 - [ ] TV show season/episode poster support
 - [ ] Undo/rollback poster changes
 - [ ] TMDB/TVDB direct API integration for more poster sources
-- [ ] Docker Hub image publishing
