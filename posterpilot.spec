@@ -8,9 +8,8 @@ import os
 
 block_cipher = None
 
-# Collect all template and static files
+# Collect static files and default config
 datas = [
-    ('app/templates', 'app/templates'),
     ('app/static', 'app/static'),
     ('data/config.toml', 'data'),
 ]
