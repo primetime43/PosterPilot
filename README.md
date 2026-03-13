@@ -22,6 +22,17 @@ I just wanted to fix broken and ugly posters across my Plex libraries without cl
 - **Encrypted secrets** — Plex tokens and server URLs are stored encrypted on disk, never in plaintext
 - **Dark & light themes**
 
+## Screenshots
+
+<details>
+<summary>Click to expand</summary>
+
+![alt text](docs/images/image.png)
+![alt text](docs/images/image-1.png)
+![alt text](docs/images/image-2.png)
+
+</details>
+
 ## Getting Started
 
 ### Run from Source
