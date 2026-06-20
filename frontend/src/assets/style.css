@@ -572,6 +572,45 @@ h3 {
     background: var(--bg-primary);
 }
 
+.poster-clickable {
+    cursor: zoom-in;
+    transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.poster-clickable:hover {
+    border-color: var(--accent);
+    transform: scale(1.02);
+}
+
+/* Poster lightbox */
+.lightbox {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 90vw;
+    max-height: 92vh;
+}
+.lightbox-img {
+    max-width: 90vw;
+    max-height: 85vh;
+    object-fit: contain;
+    border-radius: 6px;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+}
+.lightbox-close {
+    position: absolute;
+    top: -36px;
+    right: 0;
+    font-size: 2rem;
+    color: #fff;
+}
+.lightbox-caption {
+    margin-top: 12px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    text-align: center;
+}
+
 .poster-placeholder {
     width: 100%;
     max-width: 160px;

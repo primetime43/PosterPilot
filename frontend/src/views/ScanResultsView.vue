@@ -169,7 +169,10 @@
           <div class="poster-slot">
             <p class="poster-label">Current</p>
             <img v-if="item.current_poster_url" :src="thumbSrc(item.current_poster_url)" alt="Current poster"
-                 class="poster-thumb" loading="lazy" @error="($event.target.style.display = 'none')" />
+                 class="poster-thumb poster-clickable" loading="lazy"
+                 title="Click to enlarge"
+                 @click.stop="openLightbox(item.current_poster_url, item.title + ' — Current')"
+                 @error="($event.target.style.display = 'none')" />
             <div v-else class="poster-placeholder">No image</div>
             <div class="poster-details">
               <span v-if="item.current_score != null" class="poster-score">{{ item.current_score?.toFixed(1) }}</span>
@@ -180,7 +183,10 @@
           <div v-if="item.best_candidate_url" class="poster-slot">
             <p class="poster-label">Recommended</p>
             <img :src="thumbSrc(item.best_candidate_url)" alt="Recommended poster"
-                 class="poster-thumb" loading="lazy" @error="($event.target.style.display = 'none')" />
+                 class="poster-thumb poster-clickable" loading="lazy"
+                 title="Click to enlarge"
+                 @click.stop="openLightbox(item.best_candidate_url, item.title + ' — Recommended')"
+                 @error="($event.target.style.display = 'none')" />
             <div class="poster-details">
               <span class="poster-score poster-score-better">{{ item.best_candidate_score?.toFixed(1) }}</span>
               <span v-if="item.best_candidate_provider" class="poster-provider">{{ item.best_candidate_provider }}</span>
@@ -246,7 +252,9 @@
           <div v-else class="picker-grid">
             <div v-for="c in pickerItem?.all_candidates || []" :key="c.rating_key"
                  class="picker-card" :class="{ 'picker-selected': c.selected, 'picker-best': c.rating_key === pickerItem?.best_candidate_key }">
-              <img :src="thumbSrc(c.thumb_url)" alt="Poster" class="picker-thumb" loading="lazy"
+              <img :src="thumbSrc(c.thumb_url)" alt="Poster" class="picker-thumb poster-clickable" loading="lazy"
+                   title="Click to enlarge"
+                   @click.stop="openLightbox(c.thumb_url, pickerItem?.title || 'Poster')"
                    @error="($event.target.style.display = 'none')" />
               <div class="picker-info">
                 <div class="picker-score">{{ c.score?.toFixed(1) }}</div>
@@ -304,6 +312,16 @@
           <div v-if="modalLoading" class="text-muted">Loading...</div>
           <pre v-else class="modal-json">{{ modalJson }}</pre>
         </div>
+      </div>
+    </div>
+
+    <!-- Poster Lightbox -->
+    <div v-if="lightboxUrl" class="modal-overlay" @click.self="lightboxUrl = ''"
+         @keydown.escape="lightboxUrl = ''">
+      <div class="lightbox" @click.stop>
+        <button class="modal-close lightbox-close" @click="lightboxUrl = ''">&times;</button>
+        <img :src="thumbSrc(lightboxUrl)" :alt="lightboxLabel" class="lightbox-img" />
+        <p class="lightbox-caption">{{ lightboxLabel }}</p>
       </div>
     </div>
   </div>
@@ -384,6 +402,20 @@ const modalOpen = ref(false)
 const modalTitle = ref('')
 const modalJson = ref('')
 const modalLoading = ref(false)
+
+// Poster lightbox
+const lightboxUrl = ref('')
+const lightboxLabel = ref('')
+function openLightbox(url, label) {
+  if (!url) return
+  // Upgrade small TMDB preview renditions (w342) to a larger one so the
+  // enlarged view is sharp.
+  lightboxUrl.value = url.replace(
+    /(image\.tmdb\.org\/t\/p\/)w\d+/,
+    '$1w780'
+  )
+  lightboxLabel.value = label || ''
+}
 
 onMounted(async () => {
   try {
