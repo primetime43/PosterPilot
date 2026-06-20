@@ -223,6 +223,17 @@ class LibraryScanner:
                 str(ids["tvdb"]), "tvdb_id", media_type
             )
 
+        # Last resort for items Plex left unmatched (guid local://...) or
+        # mismatched to a dead IMDb id: search TMDB by title + year.
+        if not tmdb_id:
+            year = getattr(item, "year", None)
+            tmdb_id = self._tmdb.search(item.title, year, media_type)
+            if tmdb_id:
+                logger.info(
+                    "TMDB title-search matched '%s' (%s) -> %s",
+                    item.title, year or "no year", tmdb_id,
+                )
+
         if not tmdb_id:
             logger.info(
                 "No TMDB match for '%s' (external ids: %s) — no TMDB posters",

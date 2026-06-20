@@ -10,6 +10,7 @@ via item.uploadPoster(url=...) instead of selecting an existing poster.
 """
 
 import logging
+import re
 from typing import Optional
 
 from app.models import PosterCandidate
@@ -78,6 +79,59 @@ class TmdbClient:
         results = data.get(results_key) or []
         if results:
             return results[0].get("id")
+        return None
+
+    def search(
+        self, title: str, year: Optional[int] = None, media_type: str = "movie"
+    ) -> Optional[int]:
+        """Find a TMDB id by title, for items Plex left unmatched or mismatched.
+
+        Conservative on purpose — only accepts a result that matches by
+        year (±1) or whose normalized title is an EXACT match. This avoids
+        grabbing a wrong film for short ambiguous titles (e.g. "Good"
+        matching "Good Will Hunting"). Returns None when nothing is safe.
+        """
+        if not self.configured or not title:
+            return None
+
+        endpoint = "tv" if media_type == "show" else "movie"
+        params = {"api_key": self._api_key, "query": title}
+        if year:
+            params["year"] = year
+        try:
+            import httpx
+
+            with httpx.Client(timeout=10) as client:
+                resp = client.get(f"{API_BASE}/search/{endpoint}", params=params)
+                if resp.status_code != 200:
+                    return None
+                results = resp.json().get("results") or []
+        except Exception as e:
+            logger.warning("TMDB search failed for %r: %s", title, e)
+            return None
+
+        if not results:
+            return None
+
+        date_key = "first_air_date" if endpoint == "tv" else "release_date"
+        name_key = "name" if endpoint == "tv" else "title"
+
+        def norm(s: str) -> str:
+            return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+        # 1. Trust a year match (strongest signal when Plex has a year).
+        if year:
+            for m in results:
+                ry = (m.get(date_key) or "")[:4]
+                if ry.isdigit() and abs(int(ry) - year) <= 1:
+                    return m.get("id")
+
+        # 2. Otherwise require an exact normalized-title match.
+        qn = norm(title)
+        for m in results:
+            if norm(m.get(name_key)) == qn:
+                return m.get("id")
+
         return None
 
     def get_posters(
