@@ -19,3 +19,4 @@ data/scans/
 .ruff_cache/
 .pytest_cache/
 /app/static/spa/assets
+*.log*

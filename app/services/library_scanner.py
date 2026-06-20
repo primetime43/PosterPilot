@@ -203,14 +203,33 @@ class LibraryScanner:
         return scan_item
 
     def _fetch_tmdb_candidates(self, item) -> list:
-        """Fetch poster candidates from TMDB for an item, if configured."""
+        """Fetch poster candidates from TMDB for an item, if configured.
+
+        Resolves the TMDB id from the item's external ids, falling back to
+        TMDB's /find endpoint for legacy IMDb/TVDB-agent items that don't
+        carry a TMDB id directly.
+        """
         if not self._tmdb.configured:
             return []
-        tmdb_id = self._plex.get_tmdb_id(item)
-        if not tmdb_id:
-            logger.debug("No TMDB id for '%s' — skipping TMDB lookup", item.title)
-            return []
+
         media_type = getattr(item, "type", "movie")
+        ids = self._plex.get_external_ids(item)
+        tmdb_id = ids.get("tmdb")
+
+        if not tmdb_id and ids.get("imdb"):
+            tmdb_id = self._tmdb.find_by_external_id(ids["imdb"], "imdb_id", media_type)
+        if not tmdb_id and ids.get("tvdb"):
+            tmdb_id = self._tmdb.find_by_external_id(
+                str(ids["tvdb"]), "tvdb_id", media_type
+            )
+
+        if not tmdb_id:
+            logger.info(
+                "No TMDB match for '%s' (external ids: %s) — no TMDB posters",
+                item.title, ids or "none",
+            )
+            return []
+
         return self._tmdb.get_posters(tmdb_id, media_type=media_type)
 
     def scan_library(

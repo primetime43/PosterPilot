@@ -46,6 +46,40 @@ class TmdbClient:
     def configured(self) -> bool:
         return bool(self._api_key)
 
+    def find_by_external_id(
+        self, external_id: str, source: str, media_type: str = "movie"
+    ) -> Optional[int]:
+        """Resolve a TMDB id from an IMDb/TVDB id via TMDB's /find endpoint.
+
+        Used for items matched by Plex's legacy IMDb/TVDB agents, which
+        don't carry a TMDB id directly.
+
+        Args:
+            external_id: e.g. 'tt1583421' (IMDb) or '78901' (TVDB).
+            source: TMDB external source — 'imdb_id' or 'tvdb_id'.
+        """
+        if not self.configured or not external_id:
+            return None
+        url = f"{API_BASE}/find/{external_id}"
+        params = {"api_key": self._api_key, "external_source": source}
+        try:
+            import httpx
+
+            with httpx.Client(timeout=10) as client:
+                resp = client.get(url, params=params)
+                if resp.status_code != 200:
+                    return None
+                data = resp.json()
+        except Exception as e:
+            logger.warning("TMDB /find failed for %s=%s: %s", source, external_id, e)
+            return None
+
+        results_key = "tv_results" if media_type == "show" else "movie_results"
+        results = data.get(results_key) or []
+        if results:
+            return results[0].get("id")
+        return None
+
     def get_posters(
         self, tmdb_id: int, media_type: str = "movie", limit: int = 12
     ) -> list[PosterCandidate]:

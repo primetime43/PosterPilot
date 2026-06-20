@@ -9,6 +9,7 @@ Supports two authentication methods:
 """
 
 import logging
+import re
 import threading
 import urllib.parse
 from dataclasses import dataclass, field
@@ -384,13 +385,21 @@ class PlexClient:
         separator = "&" if "?" in thumb else "?"
         return f"{self._server._baseurl}{thumb}{separator}X-Plex-Token={self._server._token}"
 
-    def get_tmdb_id(self, item) -> Optional[int]:
-        """Extract the TMDB id from a Plex item's external GUIDs.
+    def get_external_ids(self, item) -> dict:
+        """Extract external ids (tmdb/imdb/tvdb) from a Plex item.
 
-        Plex stores agent GUIDs like 'tmdb://72559', 'imdb://tt...', etc.
-        Returns the integer TMDB id, or None if the item has no TMDB GUID
-        (e.g. matched only against another agent).
+        Handles BOTH Plex agent styles:
+        - New agents (tv.plex.agents.movie): a structured ``item.guids``
+          list like ['tmdb://72559', 'imdb://tt1583421', 'tvdb://...'].
+        - Legacy agents: a single ``item.guid`` string like
+          'com.plexapp.agents.themoviedb://72559?lang=en' or
+          'com.plexapp.agents.imdb://tt1583421?lang=en', with an empty
+          ``item.guids`` list.
+
+        Returns a dict with any of 'tmdb' (int), 'imdb' (str like 'tt123'),
+        'tvdb' (int). Empty if the item has no recognizable match.
         """
+        ids: dict = {}
         try:
             guids = getattr(item, "guids", None)
             if not guids:
@@ -400,10 +409,32 @@ class PlexClient:
             for g in guids:
                 gid = getattr(g, "id", "") or ""
                 if gid.startswith("tmdb://"):
-                    return int(gid.split("tmdb://", 1)[1])
+                    ids["tmdb"] = int(re.sub(r"\D", "", gid.split("tmdb://", 1)[1]))
+                elif gid.startswith("imdb://"):
+                    ids["imdb"] = gid.split("imdb://", 1)[1].split("?")[0]
+                elif gid.startswith("tvdb://"):
+                    ids["tvdb"] = int(re.sub(r"\D", "", gid.split("tvdb://", 1)[1]))
+
+            # Legacy single guid string (only when the new list lacked it).
+            legacy = getattr(item, "guid", "") or ""
+            if "themoviedb" in legacy and "tmdb" not in ids:
+                digits = re.search(r"://(\d+)", legacy)
+                if digits:
+                    ids["tmdb"] = int(digits.group(1))
+            elif "imdb" in legacy and "imdb" not in ids:
+                m = re.search(r"(tt\d+)", legacy)
+                if m:
+                    ids["imdb"] = m.group(1)
+            elif ("thetvdb" in legacy or "tvdb" in legacy) and "tvdb" not in ids:
+                digits = re.search(r"://(\d+)", legacy)
+                if digits:
+                    ids["tvdb"] = int(digits.group(1))
         except Exception as e:
-            logger.debug("Could not read TMDB id for '%s': %s", getattr(item, "title", "?"), e)
-        return None
+            logger.debug(
+                "Could not read external ids for '%s': %s",
+                getattr(item, "title", "?"), e,
+            )
+        return ids
 
     def upload_poster_url(self, item, url: str) -> bool:
         """Upload a poster to an item from an external image URL.
