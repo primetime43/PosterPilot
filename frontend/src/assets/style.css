@@ -590,12 +590,33 @@ h3 {
     max-width: 90vw;
     max-height: 92vh;
 }
+.lightbox-stage {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
 .lightbox-img {
-    max-width: 90vw;
+    max-width: 80vw;
     max-height: 85vh;
     object-fit: contain;
     border-radius: 6px;
     box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+}
+.lightbox-nav {
+    flex: none;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--border);
+    color: #fff;
+    font-size: 2rem;
+    line-height: 1;
+    width: 48px;
+    height: 64px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+.lightbox-nav:hover {
+    background: var(--accent);
 }
 .lightbox-close {
     position: absolute;

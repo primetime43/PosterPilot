@@ -171,7 +171,7 @@
             <img v-if="item.current_poster_url" :src="thumbSrc(item.current_poster_url)" alt="Current poster"
                  class="poster-thumb poster-clickable" loading="lazy"
                  title="Click to enlarge"
-                 @click.stop="openLightbox(item.current_poster_url, item.title + ' — Current')"
+                 @click.stop="openItemLightbox(item, 'current')"
                  @error="($event.target.style.display = 'none')" />
             <div v-else class="poster-placeholder">No image</div>
             <div class="poster-details">
@@ -185,7 +185,7 @@
             <img :src="thumbSrc(item.best_candidate_url)" alt="Recommended poster"
                  class="poster-thumb poster-clickable" loading="lazy"
                  title="Click to enlarge"
-                 @click.stop="openLightbox(item.best_candidate_url, item.title + ' — Recommended')"
+                 @click.stop="openItemLightbox(item, 'recommended')"
                  @error="($event.target.style.display = 'none')" />
             <div class="poster-details">
               <span class="poster-score poster-score-better">{{ item.best_candidate_score?.toFixed(1) }}</span>
@@ -250,11 +250,11 @@
             No alternative posters found for this item.
           </p>
           <div v-else class="picker-grid">
-            <div v-for="c in pickerItem?.all_candidates || []" :key="c.rating_key"
+            <div v-for="(c, idx) in pickerItem?.all_candidates || []" :key="c.rating_key"
                  class="picker-card" :class="{ 'picker-selected': c.selected, 'picker-best': c.rating_key === pickerItem?.best_candidate_key }">
               <img :src="thumbSrc(c.thumb_url)" alt="Poster" class="picker-thumb poster-clickable" loading="lazy"
                    title="Click to enlarge"
-                   @click.stop="openLightbox(c.thumb_url, pickerItem?.title || 'Poster')"
+                   @click.stop="openPickerLightbox(idx)"
                    @error="($event.target.style.display = 'none')" />
               <div class="picker-info">
                 <div class="picker-score">{{ c.score?.toFixed(1) }}</div>
@@ -316,12 +316,22 @@
     </div>
 
     <!-- Poster Lightbox -->
-    <div v-if="lightboxUrl" class="modal-overlay" @click.self="lightboxUrl = ''"
-         @keydown.escape="lightboxUrl = ''">
+    <div v-if="lightboxOpen" class="modal-overlay" @click.self="closeLightbox">
       <div class="lightbox" @click.stop>
-        <button class="modal-close lightbox-close" @click="lightboxUrl = ''">&times;</button>
-        <img :src="thumbSrc(lightboxUrl)" :alt="lightboxLabel" class="lightbox-img" />
-        <p class="lightbox-caption">{{ lightboxLabel }}</p>
+        <button class="modal-close lightbox-close" @click="closeLightbox">&times;</button>
+        <div class="lightbox-stage">
+          <button v-if="lightboxItems.length > 1" class="lightbox-nav lightbox-prev"
+                  @click="lightboxPrev" title="Previous (←)">&#8249;</button>
+          <img :src="lightboxSrc" :alt="lightboxLabel" class="lightbox-img" />
+          <button v-if="lightboxItems.length > 1" class="lightbox-nav lightbox-next"
+                  @click="lightboxNext" title="Next (→)">&#8250;</button>
+        </div>
+        <p class="lightbox-caption">
+          {{ lightboxLabel }}
+          <span v-if="lightboxItems.length > 1" class="text-muted">
+            · {{ lightboxIndex + 1 }} / {{ lightboxItems.length }}
+          </span>
+        </p>
       </div>
     </div>
   </div>
@@ -403,19 +413,73 @@ const modalTitle = ref('')
 const modalJson = ref('')
 const modalLoading = ref(false)
 
-// Poster lightbox
-const lightboxUrl = ref('')
-const lightboxLabel = ref('')
-function openLightbox(url, label) {
-  if (!url) return
-  // Upgrade small TMDB preview renditions (w342) to a larger one so the
-  // enlarged view is sharp.
-  lightboxUrl.value = url.replace(
-    /(image\.tmdb\.org\/t\/p\/)w\d+/,
-    '$1w780'
-  )
-  lightboxLabel.value = label || ''
+// Poster lightbox — holds a navigable list of {url, label} so the user
+// can arrow between posters (Current ↔ Recommended, or all candidates).
+const lightboxItems = ref([])
+const lightboxIndex = ref(0)
+const lightboxOpen = computed(() => lightboxItems.value.length > 0)
+const lightboxCurrent = computed(() => lightboxItems.value[lightboxIndex.value] || null)
+const lightboxLabel = computed(() => lightboxCurrent.value?.label || '')
+const lightboxSrc = computed(() => {
+  const it = lightboxCurrent.value
+  if (!it) return ''
+  // Upgrade small TMDB preview renditions (w342) so the enlarged view is sharp.
+  const upgraded = it.url.replace(/(image\.tmdb\.org\/t\/p\/)w\d+/, '$1w780')
+  return thumbSrc(upgraded)
+})
+
+function openLightboxList(items, index = 0) {
+  const clean = items.filter((i) => i && i.url)
+  if (!clean.length) return
+  lightboxItems.value = clean
+  lightboxIndex.value = Math.max(0, Math.min(index, clean.length - 1))
 }
+function closeLightbox() {
+  lightboxItems.value = []
+}
+function lightboxNext() {
+  if (lightboxItems.value.length < 2) return
+  lightboxIndex.value = (lightboxIndex.value + 1) % lightboxItems.value.length
+}
+function lightboxPrev() {
+  if (lightboxItems.value.length < 2) return
+  lightboxIndex.value =
+    (lightboxIndex.value - 1 + lightboxItems.value.length) % lightboxItems.value.length
+}
+
+// Open from a result card: navigate Current ↔ Recommended.
+function openItemLightbox(item, which) {
+  const list = []
+  if (item.current_poster_url) {
+    list.push({ url: item.current_poster_url, label: item.title + ' — Current' })
+  }
+  if (item.best_candidate_url) {
+    list.push({ url: item.best_candidate_url, label: item.title + ' — Recommended' })
+  }
+  const start = which === 'recommended'
+    ? list.findIndex((i) => i.label.endsWith('Recommended'))
+    : list.findIndex((i) => i.label.endsWith('Current'))
+  openLightboxList(list, start < 0 ? 0 : start)
+}
+
+// Open from the candidate picker: navigate all candidates.
+function openPickerLightbox(idx) {
+  const cands = pickerItem.value?.all_candidates || []
+  const title = pickerItem.value?.title || 'Poster'
+  openLightboxList(
+    cands.map((c, i) => ({ url: c.thumb_url, label: `${title} — ${i + 1}` })),
+    idx
+  )
+}
+
+function handleLightboxKeys(e) {
+  if (!lightboxOpen.value) return
+  if (e.key === 'ArrowRight') { lightboxNext(); e.preventDefault() }
+  else if (e.key === 'ArrowLeft') { lightboxPrev(); e.preventDefault() }
+  else if (e.key === 'Escape') { closeLightbox() }
+}
+onMounted(() => window.addEventListener('keydown', handleLightboxKeys))
+onUnmounted(() => window.removeEventListener('keydown', handleLightboxKeys))
 
 onMounted(async () => {
   try {
