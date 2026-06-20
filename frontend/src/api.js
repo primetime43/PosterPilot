@@ -54,6 +54,10 @@ export default {
       }),
     }),
   getScanStatus: (jobId) => request(`/scan/${jobId}`),
+  // Load poster candidates for one item on demand (two-phase scan only
+  // pre-loads them for flagged-broken items).
+  getItemCandidates: (jobId, itemKey) =>
+    request(`/scan/${jobId}/${itemKey}/candidates`),
 
   // Jobs
   getJobs: () => request('/jobs'),

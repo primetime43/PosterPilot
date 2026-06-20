@@ -15,6 +15,9 @@ aspect_ratio_weight = 1.5
 provider_weight = 1.0
 penalize_landscape = true
 landscape_penalty = -5.0
+# Broken-poster detection (inspects the current poster's actual pixels)
+broken_aspect_tolerance = 0.25
+min_brightness = 40
 
 [app]
 host = "0.0.0.0"

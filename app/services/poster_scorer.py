@@ -11,6 +11,7 @@ and register them in the score() method.
 """
 
 import logging
+import threading
 from io import BytesIO
 from typing import Optional
 
@@ -166,7 +167,37 @@ class ImageInspector:
     Used to get width/height from poster images when not available
     from the Plex API metadata. Also provides brightness analysis
     for detecting broken/corrupt posters (dark video frame grabs).
+
+    Image fetches share a single pooled HTTP client (see _get_client) so
+    a full-library scan reuses keep-alive connections instead of opening
+    and tearing one down per image — the latter exhausts sockets under the
+    scanner's thread pool and fails partway through a large library.
     """
+
+    _client = None
+    _client_lock = threading.Lock()
+
+    @classmethod
+    def _get_client(cls):
+        """Return a process-wide pooled httpx client, creating it once.
+
+        Bounded connection limits keep the scanner from opening an
+        unbounded number of sockets to the Plex server.
+        """
+        if cls._client is None:
+            with cls._client_lock:
+                if cls._client is None:
+                    import httpx
+
+                    cls._client = httpx.Client(
+                        verify=False,
+                        timeout=10,
+                        limits=httpx.Limits(
+                            max_connections=16,
+                            max_keepalive_connections=8,
+                        ),
+                    )
+        return cls._client
 
     @staticmethod
     def get_dimensions_from_bytes(data: bytes) -> Optional[tuple[int, int]]:
@@ -197,6 +228,43 @@ class ImageInspector:
         except Exception as e:
             logger.debug("Could not fetch/inspect image from URL: %s", e)
         return None
+
+    @staticmethod
+    def inspect_from_url(
+        url: str, timeout: int = 10
+    ) -> Optional[tuple[int, int, float]]:
+        """Fetch an image ONCE and return (width, height, center_brightness).
+
+        Combines dimension and brightness analysis into a single download
+        so broken-poster detection costs one request per poster instead of
+        two. Brightness is the median of the center 50% (0-255) to avoid
+        corner overlay badges. Returns None if the image can't be fetched.
+
+        Uses the shared pooled client so repeated scan inspections reuse
+        keep-alive connections instead of churning sockets.
+        """
+        try:
+            from PIL import Image
+
+            client = ImageInspector._get_client()
+            response = client.get(url, timeout=timeout)
+            if response.status_code != 200:
+                return None
+
+            img = Image.open(BytesIO(response.content))
+            w, h = img.size
+
+            # Crop to center 50% to avoid corner overlays, then downscale.
+            left, top = w // 4, h // 4
+            center = img.crop((left, top, w - left, h - top))
+            center = center.resize((32, 32)).convert("L")
+            pixels = sorted(center.getdata())
+            brightness = float(pixels[len(pixels) // 2])
+
+            return w, h, brightness
+        except Exception as e:
+            logger.debug("Could not inspect image from URL: %s", e)
+            return None
 
     @staticmethod
     def get_brightness_from_url(url: str, timeout: int = 5) -> Optional[float]:

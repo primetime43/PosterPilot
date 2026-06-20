@@ -239,7 +239,11 @@
           <button class="modal-close" @click="pickerOpen = false">&times;</button>
         </div>
         <div class="modal-body">
-          <div class="picker-grid">
+          <p v-if="pickerLoading" class="text-muted">Loading posters…</p>
+          <p v-else-if="!(pickerItem?.all_candidates || []).length" class="text-muted">
+            No alternative posters found for this item.
+          </p>
+          <div v-else class="picker-grid">
             <div v-for="c in pickerItem?.all_candidates || []" :key="c.rating_key"
                  class="picker-card" :class="{ 'picker-selected': c.selected, 'picker-best': c.rating_key === pickerItem?.best_candidate_key }">
               <img :src="thumbSrc(c.thumb_url)" alt="Poster" class="picker-thumb" loading="lazy"
@@ -372,6 +376,7 @@ let confirmAction = null
 // Candidate picker
 const pickerOpen = ref(false)
 const pickerItem = ref(null)
+const pickerLoading = ref(false)
 const applyingCandidate = ref(null)
 
 // Modal
@@ -583,15 +588,34 @@ async function showPosterInfo(ratingKey) {
   modalLoading.value = false
 }
 
-function openPicker(item) {
+async function openPicker(item) {
+  applyingCandidate.value = null
+  pickerOpen.value = true
+
+  // Two-phase scan only pre-loads candidates for broken items. For any
+  // other item, fetch them on demand the first time the picker opens.
+  let candidates = item.all_candidates || []
+  if (candidates.length === 0 && job.value) {
+    pickerLoading.value = true
+    pickerItem.value = { ...item, all_candidates: [] }
+    try {
+      const data = await api.getItemCandidates(job.value.job_id, item.rating_key)
+      candidates = data.all_candidates || []
+      item.all_candidates = candidates // cache on the row for next open
+      item.num_candidates = candidates.length
+    } catch (e) {
+      toast.error('Failed to load posters: ' + e.message)
+    }
+    pickerLoading.value = false
+  }
+
   pickerItem.value = {
     ...item,
-    best_candidate_key: item.all_candidates?.find((c) =>
+    all_candidates: candidates,
+    best_candidate_key: candidates.find((c) =>
       item.best_candidate_score != null && c.score === item.best_candidate_score
     )?.rating_key || null,
   }
-  applyingCandidate.value = null
-  pickerOpen.value = true
 }
 
 async function applyPickedCandidate(candidate) {

@@ -384,6 +384,27 @@ class PlexClient:
         separator = "&" if "?" in thumb else "?"
         return f"{self._server._baseurl}{thumb}{separator}X-Plex-Token={self._server._token}"
 
+    def get_item_inspect_url(self, item, width: int = 150, height: int = 225) -> str:
+        """Build a SMALL, aspect-preserving URL for pixel inspection.
+
+        Routes the current item thumb through Plex's transcode endpoint at a
+        tiny bounding box. Crucially this omits minSize (fit-within, not
+        cover), so a landscape/wrong-shaped poster keeps its true aspect
+        ratio while the download shrinks from the multi-MB original to a
+        few KB — the difference between a fast scan and a slow one.
+        """
+        if not self._server:
+            return ""
+        thumb = getattr(item, "thumb", "")
+        if not thumb:
+            return ""
+        encoded = urllib.parse.quote(thumb, safe="")
+        return (
+            f"{self._server._baseurl}/photo/:/transcode"
+            f"?url={encoded}&width={width}&height={height}&minSize=0"
+            f"&X-Plex-Token={self._server._token}"
+        )
+
     def get_item_thumb_url(self, item) -> str:
         """Get the current poster thumbnail URL for a media item."""
         if not self._server:

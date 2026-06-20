@@ -335,6 +335,72 @@ async def get_apply_status(request: Request, apply_id: str):
     }
 
 
+@router.get("/scan/{job_id}/{item_key}/candidates")
+async def get_item_candidates(request: Request, job_id: str, item_key: str):
+    """Load poster candidates for a single item on demand.
+
+    The two-phase scan only loads candidates for items it flagged broken.
+    For any other item, the frontend calls this when the user expands it,
+    so the expensive posters() call happens lazily — one item at a time —
+    instead of for the whole library up front. Results are cached back
+    onto the scan item so a repeat open is instant.
+    """
+    plex = request.app.state.plex_client
+    if not plex.is_connected():
+        return JSONResponse(
+            status_code=400, content={"error": "Not connected to Plex"}
+        )
+
+    task_mgr = request.app.state.task_manager
+    job = task_mgr.get_job(job_id)
+    if not job:
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+
+    scan_item = next((i for i in job.items if i.rating_key == item_key), None)
+    if not scan_item:
+        return JSONResponse(
+            status_code=404, content={"error": "Item not found in scan"}
+        )
+
+    # Already loaded (broken item resolved during scan, or opened before).
+    if not scan_item.all_candidates:
+        from app.config import Config
+        from app.services.library_scanner import LibraryScanner
+
+        config: Config = request.app.state.config
+        scanner = LibraryScanner(plex, config)
+        try:
+            item = plex.server.fetchItem(int(item_key))
+            ranked, current, best = scanner.build_candidates(item)
+            scan_item.all_candidates = ranked
+            scan_item.current_poster = current
+            if best:
+                scan_item.best_candidate = best
+            task_mgr._save_job_cache(job)
+        except Exception as e:
+            logger.error("Failed to load candidates for %s: %s", item_key, e)
+            return JSONResponse(status_code=500, content={"error": str(e)})
+
+    return {
+        "rating_key": scan_item.rating_key,
+        "num_candidates": len(scan_item.all_candidates),
+        "current_provider": (
+            scan_item.current_poster.provider if scan_item.current_poster else None
+        ),
+        "all_candidates": [
+            {
+                "rating_key": c.rating_key,
+                "thumb_url": c.thumb_url,
+                "provider": c.provider,
+                "selected": c.selected,
+                "score": c.score,
+                "score_breakdown": c.score_breakdown,
+            }
+            for c in scan_item.all_candidates
+        ],
+    }
+
+
 @router.post("/apply/{job_id}/{item_key}/{candidate_key}")
 async def apply_specific_candidate(
     request: Request, job_id: str, item_key: str, candidate_key: str

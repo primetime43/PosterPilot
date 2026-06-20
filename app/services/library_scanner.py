@@ -13,7 +13,7 @@ from app.config import Config
 from app.models import ItemAction, PosterCandidate, ScanItem
 from app.services.plex_client import PlexClient
 from app.services.poster_extractor import PosterExtractor
-from app.services.poster_scorer import PosterScorer
+from app.services.poster_scorer import ImageInspector, PosterScorer
 
 # Number of concurrent Plex API calls for poster fetching.
 # Too high may overwhelm the Plex server; 8 is a safe default.
@@ -30,6 +30,7 @@ class LibraryScanner:
         self._config = config
         self._extractor = PosterExtractor(plex_client, inspect_images=False)
         self._scorer = PosterScorer(config.scoring)
+        self._inspector = ImageInspector()
 
     @staticmethod
     def _get_updated_timestamp(item) -> Optional[int]:
@@ -51,137 +52,148 @@ class LibraryScanner:
     # Providers considered high quality
     _GOOD_PROVIDERS = {"tmdb", "tvdb"}
 
-    def scan_item(self, item, force_refresh: bool = False) -> ScanItem:
-        """Scan a single media item and determine the best poster action.
+    def scan_item_detect_only(self, item) -> ScanItem:
+        """Phase 1: decide whether an item's CURRENT poster is broken,
+        WITHOUT calling the expensive per-item posters() API.
 
-        Always extracts and scores poster candidates so the user can
-        see what's available. The action recommendation accounts for
-        locks, force-refresh, and score differences.
+        Only the current thumb is inspected — a single small transcode
+        fetch. Items that look broken are resolved later in phase 2, where
+        their replacement candidates are actually loaded. Healthy items
+        finish here with action=SKIP and no candidate list (those are
+        fetched lazily if the user opens the item).
         """
-        is_locked = self._plex.is_poster_locked(item)
-
         scan_item = ScanItem(
             rating_key=str(item.ratingKey),
             title=item.title,
             year=getattr(item, "year", None),
             item_type=item.type,
             current_poster_url=self._plex.get_item_thumb_url(item),
-            is_locked=is_locked,
+            is_locked=self._plex.is_poster_locked(item),
             plex_updated_at=self._get_updated_timestamp(item),
         )
 
         try:
-            # Always extract poster candidates so the user can see them
-            candidates = self._extractor.extract(item)
-            if not candidates:
+            broken, reason = self._inspect_thumb(item)
+            if broken:
+                scan_item.is_likely_broken = True
+                scan_item.broken_reason = reason
+            scan_item.action = ItemAction.SKIP
+        except Exception as e:
+            scan_item.action = ItemAction.FAILED
+            scan_item.error = str(e)
+            logger.error("Error detecting '%s': %s", item.title, e)
+
+        return scan_item
+
+    def _inspect_thumb(self, item) -> tuple[bool, Optional[str]]:
+        """Inspect the current poster's pixels and report if it's broken.
+
+        Fetches a SMALL, aspect-preserving transcode of the current thumb
+        (a few KB) and flags landscape orientation, a far-off aspect ratio,
+        or — as a conservative last resort — a very dark image. This is the
+        only network call phase 1 makes per item, replacing the much
+        heavier posters() call the old scan did for every title.
+
+        Note: because phase 1 never calls posters(), provider-based
+        heuristics (e.g. flagging correctly-shaped Gracenote posters) no
+        longer run. A bad poster that happens to be portrait-shaped and
+        bright won't be flagged — but real frame grabs/backdrops are
+        landscape or wrong-shaped and are still caught here.
+        """
+        cfg = self._config.scoring
+        inspect_url = self._plex.get_item_inspect_url(item)
+        if not inspect_url:
+            return False, None
+
+        result = self._inspector.inspect_from_url(inspect_url)
+        if not result:
+            return False, None
+        w, h, brightness = result
+        if h <= 0:
+            return False, None
+
+        # Landscape — frame grab or backdrop, not poster art.
+        if w > h:
+            return True, (
+                f"Current poster is landscape ({w}x{h}) — likely a "
+                "video frame or backdrop, not poster art"
+            )
+
+        # Aspect ratio far from the ~2:3 target.
+        ratio = w / h
+        if abs(ratio - cfg.preferred_aspect_ratio) > cfg.broken_aspect_tolerance:
+            return True, (
+                f"Current poster has the wrong shape (ratio {ratio:.2f}, "
+                f"expected ~{cfg.preferred_aspect_ratio:.2f})"
+            )
+
+        # Conservative last resort: correctly-shaped but very dark.
+        if brightness < cfg.min_brightness:
+            return True, (
+                f"Current poster is very dark (brightness {brightness:.0f}/255) "
+                "— likely a dark video frame"
+            )
+
+        return False, None
+
+    def build_candidates(self, item):
+        """Load and rank poster candidates for an item (calls posters()).
+
+        Returns (ranked_candidates, current_poster, best_candidate). Shared
+        by phase-2 resolution and the on-demand candidate endpoint so the
+        per-item posters() call lives in exactly one place.
+        """
+        candidates = self._extractor.extract(item)
+        if not candidates:
+            return [], None, None
+        ranked = self._scorer.rank(candidates)
+        current = self._extractor.find_current_poster(ranked)
+        best = next((c for c in ranked if c.thumb_url), None)
+        return ranked, current, best
+
+    def resolve_item(self, item, scan_item: ScanItem) -> ScanItem:
+        """Phase 2: load replacement candidates for a flagged-broken item
+        and recommend the best non-current poster.
+
+        Only runs for items phase 1 marked broken, so the expensive
+        posters() call is spent on the handful that actually need a fix.
+        """
+        try:
+            ranked, current, _best = self.build_candidates(item)
+            if not ranked:
                 scan_item.action = ItemAction.NO_ALTERNATIVES
                 return scan_item
 
-            if len(candidates) <= 1:
-                scan_item.action = ItemAction.NO_ALTERNATIVES
-                scan_item.all_candidates = candidates
-                return scan_item
-
-            # Score and rank candidates
-            ranked = self._scorer.rank(candidates)
             scan_item.all_candidates = ranked
-
-            # Find current poster
-            current = self._extractor.find_current_poster(ranked)
             scan_item.current_poster = current
-
-            # Check if current poster is an upload (Kometa, manual upload, etc.)
             if current and current.rating_key.startswith("upload://"):
                 scan_item.is_uploaded = True
 
-            # Detect likely broken posters
-            self._detect_broken_poster(scan_item, current, ranked)
-
-            # Best candidate is the top-ranked one that has a valid thumb URL.
-            # Never recommend switching to a poster with no image.
-            best = None
-            for c in ranked:
-                if c.thumb_url:
-                    best = c
-                    break
-            if not best:
+            # Only one poster available — broken but nothing to switch to.
+            if len(ranked) <= 1:
                 scan_item.action = ItemAction.NO_ALTERNATIVES
                 return scan_item
-            scan_item.best_candidate = best
 
-            # Determine action based on score comparison
-            if current and best.rating_key == current.rating_key:
-                # Current poster is already the best
-                if force_refresh:
-                    scan_item.action = ItemAction.CHANGE
-                else:
-                    scan_item.action = ItemAction.SKIP
-            elif self._config.app.force_replace or force_refresh:
-                scan_item.action = ItemAction.CHANGE
-            elif current is None:
-                # No current poster identified in candidates — recommend best
-                scan_item.action = ItemAction.CHANGE
-            elif scan_item.is_likely_broken:
-                # Broken poster always gets a change recommendation
-                scan_item.action = ItemAction.CHANGE
-            else:
-                # Current is not the best — recommend change only if
-                # the score difference is meaningful (avoids churn)
-                score_diff = best.score - current.score
-                if score_diff > 0.5:
-                    scan_item.action = ItemAction.CHANGE
-                else:
-                    scan_item.action = ItemAction.SKIP
+            # Never recommend the current (broken) poster as its own fix:
+            # prefer the best-ranked candidate that isn't the current one.
+            pool = [c for c in ranked if c.thumb_url]
+            if current:
+                non_current = [c for c in pool if c.rating_key != current.rating_key]
+                if non_current:
+                    pool = non_current
+            if not pool:
+                scan_item.action = ItemAction.NO_ALTERNATIVES
+                return scan_item
+
+            scan_item.best_candidate = pool[0]
+            scan_item.action = ItemAction.CHANGE
 
         except Exception as e:
             scan_item.action = ItemAction.FAILED
             scan_item.error = str(e)
-            logger.error("Error scanning '%s': %s", item.title, e)
+            logger.error("Error resolving '%s': %s", scan_item.title, e)
 
         return scan_item
-
-    def _detect_broken_poster(
-        self,
-        scan_item: ScanItem,
-        current: Optional[PosterCandidate],
-        ranked: list[PosterCandidate],
-    ) -> None:
-        """Detect if the current poster is likely broken or low quality.
-
-        Metadata-based heuristics (no image downloading):
-        1. No poster is selected among candidates — the item's thumb
-           is not from the poster list, meaning it's likely an
-           auto-generated video frame or a stale/orphaned poster
-        2. Current poster has no/empty thumb URL
-        3. Current poster is from Gracenote (known low quality)
-        """
-        has_good_alt = any(
-            c.provider and c.provider.lower() in self._GOOD_PROVIDERS and c.thumb_url
-            for c in ranked
-        )
-
-        if current is None:
-            # No poster candidate is marked as selected. The item's
-            # thumb is something outside the poster list — typically an
-            # auto-generated video frame or an orphaned upload.
-            scan_item.is_likely_broken = True
-            scan_item.broken_reason = (
-                "No poster is selected — current image is not from "
-                "any known poster source (likely a video frame)"
-            )
-            return
-
-        if not current.thumb_url:
-            scan_item.is_likely_broken = True
-            scan_item.broken_reason = "Current poster has no image URL"
-            return
-
-        current_provider = (current.provider or "").lower()
-
-        # Gracenote posters are often low quality auto-picks
-        if current_provider == "gracenote" and has_good_alt:
-            scan_item.is_likely_broken = True
-            scan_item.broken_reason = "Current poster is from Gracenote (often low quality)"
 
     def scan_library(
         self,
@@ -190,10 +202,17 @@ class LibraryScanner:
         progress_callback: Optional[Callable[[int, int], None]] = None,
         previous_results: Optional[dict[str, "ScanItem"]] = None,
     ) -> list[ScanItem]:
-        """Scan all items in a library using concurrent API calls.
+        """Scan a library in two phases for speed.
 
-        Uses a thread pool to call item.posters() in parallel, since
-        the Plex API has no batch endpoint and each call is independent.
+        Phase 1 (detect): inspect every item's current poster with one
+        small thumb fetch and flag the broken ones. No posters() calls.
+        Phase 2 (resolve): call the expensive item.posters() only for the
+        flagged-broken items, to load and rank replacement candidates.
+
+        This avoids the old cost of one posters() call per title — the bulk
+        of the library never needs it. Healthy items finish phase 1 with
+        action=SKIP and an empty candidate list; their alternatives are
+        loaded on demand via build_candidates if the user opens the item.
 
         If previous_results is provided (keyed by rating_key), items whose
         Plex updatedAt hasn't changed since the previous scan are carried
@@ -239,13 +258,17 @@ class LibraryScanner:
 
         processed = 0
         lock = threading.Lock()
+        items_by_index = dict(items_to_scan)
 
-        def _scan_at(index: int, item) -> tuple[int, ScanItem]:
-            return index, self.scan_item(item, force_refresh)
+        # ── Phase 1: detect broken posters (no posters() calls) ──
+        # Each item costs only one small thumb fetch. This is the bulk of
+        # the work and drives the progress bar.
+        def _detect_at(index: int, item) -> tuple[int, ScanItem]:
+            return index, self.scan_item_detect_only(item)
 
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
             futures = {
-                pool.submit(_scan_at, idx, item): idx
+                pool.submit(_detect_at, idx, item): idx
                 for idx, item in items_to_scan
             }
             for future in as_completed(futures):
@@ -256,10 +279,28 @@ class LibraryScanner:
                     if progress_callback:
                         progress_callback(carried + processed, total)
 
-        # Report carried-forward items in initial progress
-        if carried and progress_callback:
-            # Already reported incrementally above; just ensure we hit total
-            pass
+        # ── Phase 2: resolve only the broken items (calls posters()) ──
+        # The expensive per-item API call is now spent on just the handful
+        # that need a replacement, instead of the whole library.
+        broken_indices = [
+            idx for idx in items_by_index
+            if results[idx] is not None and results[idx].is_likely_broken
+        ]
+        logger.info(
+            "Phase 1 done: %d broken of %d scanned — resolving candidates",
+            len(broken_indices), scan_count,
+        )
+
+        def _resolve_at(index: int) -> None:
+            self.resolve_item(items_by_index[index], results[index])
+
+        if broken_indices:
+            with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+                resolve_futures = [
+                    pool.submit(_resolve_at, idx) for idx in broken_indices
+                ]
+                for future in as_completed(resolve_futures):
+                    future.result()
 
         # Filter out any None (shouldn't happen but be safe)
         final = [r for r in results if r is not None]

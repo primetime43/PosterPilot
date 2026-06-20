@@ -65,6 +65,13 @@ class ScoringConfig(BaseModel):
     provider_weight: float = 1.0
     penalize_landscape: bool = True
     landscape_penalty: float = -5.0
+    # Broken-poster detection: inspect the current poster's actual pixels.
+    # Max allowed deviation from preferred_aspect_ratio before the current
+    # poster is flagged as broken (wrong-shaped art / frame grab).
+    broken_aspect_tolerance: float = 0.25
+    # Median center brightness (0-255) below which a correctly-shaped poster
+    # is flagged as a likely dark video frame grab. Conservative/last-resort.
+    min_brightness: int = 40
 
 
 class AppConfig(BaseModel):
