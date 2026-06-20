@@ -11,6 +11,7 @@ from typing import Callable, Optional
 
 from app.models import ItemAction, ScanItem
 from app.services.plex_client import PlexClient
+from app.services.tmdb_client import is_tmdb_candidate, upload_url_for
 
 # Concurrent Plex API calls for poster applying.
 # Lower than scanning since each apply does a write operation.
@@ -53,13 +54,21 @@ class PosterApplier:
             return scan_item
 
         try:
-            # Get the actual Plex item
-            section = self._plex.server.library.sectionByID(
-                int(self._get_section_id(scan_item))
-            ) if self._get_section_id(scan_item) else None
-
-            # We need to find the item and its poster objects
             item = self._plex.server.fetchItem(int(scan_item.rating_key))
+
+            # TMDB candidates don't exist in Plex's poster list — upload the
+            # image directly from its TMDB URL.
+            if is_tmdb_candidate(scan_item.best_candidate.rating_key):
+                upload_url = upload_url_for(scan_item.best_candidate.rating_key)
+                if self._plex.upload_poster_url(item, upload_url):
+                    scan_item.applied = True
+                    logger.info("Applied TMDB poster for '%s'", scan_item.title)
+                else:
+                    scan_item.action = ItemAction.FAILED
+                    scan_item.error = "TMDB poster upload failed"
+                return scan_item
+
+            # Otherwise select an existing Plex poster by rating key.
             posters = self._plex.get_item_posters(item)
 
             # Find the matching poster by rating_key

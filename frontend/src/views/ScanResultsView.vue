@@ -442,6 +442,10 @@ function filterItems() {
     items = items.filter((i) => i.is_uploaded)
   } else if (filterAction.value === 'broken') {
     items = items.filter((i) => i.is_likely_broken)
+  } else if (filterAction.value === 'all') {
+    // Healthy/skipped items are noise here — only surface actionable ones.
+    // They remain reachable via the explicit "Skipped" filter.
+    items = items.filter((i) => i.action !== 'skip')
   } else if (filterAction.value !== 'all') {
     items = items.filter((i) => i.action === filterAction.value)
   }

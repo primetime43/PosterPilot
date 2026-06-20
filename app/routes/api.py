@@ -401,11 +401,15 @@ async def get_item_candidates(request: Request, job_id: str, item_key: str):
     }
 
 
-@router.post("/apply/{job_id}/{item_key}/{candidate_key}")
+@router.post("/apply/{job_id}/{item_key}/{candidate_key:path}")
 async def apply_specific_candidate(
     request: Request, job_id: str, item_key: str, candidate_key: str
 ):
-    """Apply a specific poster candidate to a single item."""
+    """Apply a specific poster candidate to a single item.
+
+    candidate_key uses a :path converter because TMDB candidate keys
+    (tmdb://<file_path>) contain slashes.
+    """
     plex = request.app.state.plex_client
     if not plex.is_connected():
         return JSONResponse(
@@ -440,32 +444,41 @@ async def apply_specific_candidate(
         )
 
     try:
+        from app.services.tmdb_client import is_tmdb_candidate, upload_url_for
+
         item = plex.server.fetchItem(int(item_key))
-        posters = plex.get_item_posters(item)
 
-        target_poster = None
-        for p in posters:
-            if str(getattr(p, "ratingKey", "")) == candidate_key:
-                target_poster = p
-                break
-
-        if not target_poster:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Poster no longer available on Plex"},
-            )
-
-        success = plex.set_poster(item, target_poster)
-        if success:
-            scan_item.best_candidate = candidate
-            scan_item.applied = True
-            scan_item.action = ItemAction.CHANGE
-            task_mgr._save_job_cache(job)
-            return {"applied": True, "title": scan_item.title}
+        # TMDB candidate — upload the image directly from its TMDB URL.
+        if is_tmdb_candidate(candidate_key):
+            success = plex.upload_poster_url(item, upload_url_for(candidate_key))
+            if not success:
+                return JSONResponse(
+                    status_code=500, content={"error": "TMDB poster upload failed"}
+                )
         else:
-            return JSONResponse(
-                status_code=500, content={"error": "setPoster call failed"}
-            )
+            posters = plex.get_item_posters(item)
+            target_poster = None
+            for p in posters:
+                if str(getattr(p, "ratingKey", "")) == candidate_key:
+                    target_poster = p
+                    break
+
+            if not target_poster:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": "Poster no longer available on Plex"},
+                )
+
+            if not plex.set_poster(item, target_poster):
+                return JSONResponse(
+                    status_code=500, content={"error": "setPoster call failed"}
+                )
+
+        scan_item.best_candidate = candidate
+        scan_item.applied = True
+        scan_item.action = ItemAction.CHANGE
+        task_mgr._save_job_cache(job)
+        return {"applied": True, "title": scan_item.title}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
@@ -588,6 +601,12 @@ async def update_config(request: Request):
         for key, val in data["app"].items():
             if hasattr(config.app, key):
                 setattr(config.app, key, val)
+
+    # Update TMDB config
+    if "tmdb" in data:
+        for key, val in data["tmdb"].items():
+            if hasattr(config.tmdb, key):
+                setattr(config.tmdb, key, val)
 
     config.save()
     return {"success": True}

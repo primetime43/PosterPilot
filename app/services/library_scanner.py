@@ -14,6 +14,7 @@ from app.models import ItemAction, PosterCandidate, ScanItem
 from app.services.plex_client import PlexClient
 from app.services.poster_extractor import PosterExtractor
 from app.services.poster_scorer import ImageInspector, PosterScorer
+from app.services.tmdb_client import TmdbClient
 
 # Number of concurrent Plex API calls for poster fetching.
 # Too high may overwhelm the Plex server; 8 is a safe default.
@@ -31,6 +32,11 @@ class LibraryScanner:
         self._extractor = PosterExtractor(plex_client, inspect_images=False)
         self._scorer = PosterScorer(config.scoring)
         self._inspector = ImageInspector()
+        self._tmdb = TmdbClient(
+            config.tmdb.api_key,
+            language=config.tmdb.language,
+            preview_size=config.tmdb.preview_size,
+        ) if config.tmdb.enabled else TmdbClient("")
 
     @staticmethod
     def _get_updated_timestamp(item) -> Optional[int]:
@@ -155,32 +161,33 @@ class LibraryScanner:
         """Phase 2: load replacement candidates for a flagged-broken item
         and recommend the best non-current poster.
 
-        Only runs for items phase 1 marked broken, so the expensive
-        posters() call is spent on the handful that actually need a fix.
+        Plex's own poster list is tried first; when it has no good
+        alternative (the common case for broken posters — Plex only holds
+        the bad local image), TMDB is queried directly for real artwork.
+        Only runs for items phase 1 marked broken, so this work is spent on
+        the handful that actually need a fix.
         """
         try:
             ranked, current, _best = self.build_candidates(item)
-            if not ranked:
-                scan_item.action = ItemAction.NO_ALTERNATIVES
-                return scan_item
-
-            scan_item.all_candidates = ranked
             scan_item.current_poster = current
             if current and current.rating_key.startswith("upload://"):
                 scan_item.is_uploaded = True
 
-            # Only one poster available — broken but nothing to switch to.
-            if len(ranked) <= 1:
-                scan_item.action = ItemAction.NO_ALTERNATIVES
-                return scan_item
+            # Pull real posters straight from TMDB and merge them in. These
+            # carry width/height from TMDB metadata, so the scorer ranks
+            # them on resolution/aspect just like inspected Plex posters.
+            tmdb_candidates = self._fetch_tmdb_candidates(item)
+            combined = self._scorer.rank(ranked + tmdb_candidates)
+            scan_item.all_candidates = combined
 
             # Never recommend the current (broken) poster as its own fix:
-            # prefer the best-ranked candidate that isn't the current one.
-            pool = [c for c in ranked if c.thumb_url]
-            if current:
-                non_current = [c for c in pool if c.rating_key != current.rating_key]
-                if non_current:
-                    pool = non_current
+            # pick the best-ranked candidate that isn't the current one and
+            # has a usable image.
+            current_key = current.rating_key if current else None
+            pool = [
+                c for c in combined
+                if c.thumb_url and c.rating_key != current_key
+            ]
             if not pool:
                 scan_item.action = ItemAction.NO_ALTERNATIVES
                 return scan_item
@@ -194,6 +201,17 @@ class LibraryScanner:
             logger.error("Error resolving '%s': %s", scan_item.title, e)
 
         return scan_item
+
+    def _fetch_tmdb_candidates(self, item) -> list:
+        """Fetch poster candidates from TMDB for an item, if configured."""
+        if not self._tmdb.configured:
+            return []
+        tmdb_id = self._plex.get_tmdb_id(item)
+        if not tmdb_id:
+            logger.debug("No TMDB id for '%s' — skipping TMDB lookup", item.title)
+            return []
+        media_type = getattr(item, "type", "movie")
+        return self._tmdb.get_posters(tmdb_id, media_type=media_type)
 
     def scan_library(
         self,

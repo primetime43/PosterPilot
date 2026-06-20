@@ -19,6 +19,14 @@ landscape_penalty = -5.0
 broken_aspect_tolerance = 0.25
 min_brightness = 40
 
+[tmdb]
+# Get a free API key (v3 auth) at https://www.themoviedb.org/settings/api
+# Stored encrypted at runtime; leave blank to disable TMDB poster lookup.
+api_key = ""
+enabled = true
+language = "en"
+preview_size = "w342"
+
 [app]
 host = "0.0.0.0"
 port = 8888

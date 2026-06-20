@@ -74,6 +74,22 @@ class ScoringConfig(BaseModel):
     min_brightness: int = 40
 
 
+class TmdbConfig(BaseModel):
+    """The Movie Database (TMDB) API integration.
+
+    Used to fetch replacement posters directly from TMDB when a broken
+    item has no good alternative inside Plex. Requires a free API key
+    from https://www.themoviedb.org/settings/api (v3 auth).
+    """
+
+    api_key: str = ""
+    enabled: bool = True
+    language: str = "en"  # preferred poster language (ISO 639-1)
+    # Image rendition served to the browser for previews. Apply always
+    # uploads the 'original' size regardless of this.
+    preview_size: str = "w342"
+
+
 class AppConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8888
@@ -94,6 +110,7 @@ class Config(BaseModel):
     plex: PlexConfig = Field(default_factory=PlexConfig)
     scoring: ScoringConfig = Field(default_factory=ScoringConfig)
     app: AppConfig = Field(default_factory=AppConfig)
+    tmdb: TmdbConfig = Field(default_factory=TmdbConfig)
 
     @classmethod
     def load(cls, config_path: Optional[Path] = None) -> "Config":
@@ -121,6 +138,8 @@ class Config(BaseModel):
             config.plex.token = secrets["plex_token"]
         if secrets.get("plex_base_url"):
             config.plex.base_url = secrets["plex_base_url"]
+        if secrets.get("tmdb_api_key"):
+            config.tmdb.api_key = secrets["tmdb_api_key"]
 
         # Environment variable overrides (highest priority)
         env_map = {
@@ -132,6 +151,7 @@ class Config(BaseModel):
             "POSTERPILOT_DRY_RUN": ("app", "dry_run"),
             "POSTERPILOT_LOG_LEVEL": ("app", "log_level"),
             "POSTERPILOT_OPEN_BROWSER": ("app", "open_browser"),
+            "TMDB_API_KEY": ("tmdb", "api_key"),
         }
         for env_key, (section, field) in env_map.items():
             val = os.environ.get(env_key)
@@ -160,6 +180,7 @@ class Config(BaseModel):
         secrets = load_secrets()
         secrets["plex_token"] = self.plex.token
         secrets["plex_base_url"] = self.plex.base_url
+        secrets["tmdb_api_key"] = self.tmdb.api_key
         save_secrets(secrets)
 
         # Save non-sensitive settings to TOML (exclude secrets)
@@ -167,6 +188,7 @@ class Config(BaseModel):
         # Remove sensitive fields from TOML output
         data["plex"].pop("token", None)
         data["plex"].pop("base_url", None)
+        data.get("tmdb", {}).pop("api_key", None)
 
         lines: list[str] = []
         for section, values in data.items():

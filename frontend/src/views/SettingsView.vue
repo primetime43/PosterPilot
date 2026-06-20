@@ -37,6 +37,33 @@
             <input type="number" v-model.number="config.plex.timeout" min="5" max="120" />
           </div>
         </div>
+
+        <div class="form-row" style="margin-top: 12px">
+          <div class="form-group" style="flex: 2">
+            <label>TMDB API Key</label>
+            <div style="position: relative">
+              <input :type="showTmdbKey ? 'text' : 'password'" v-model="config.tmdb.api_key"
+                     placeholder="TMDB v3 API key" style="padding-right: 40px" />
+              <button type="button" class="token-toggle" @click="showTmdbKey = !showTmdbKey"
+                      :title="showTmdbKey ? 'Hide key' : 'Show key'">
+                {{ showTmdbKey ? 'Hide' : 'Show' }}
+              </button>
+            </div>
+            <small class="text-muted">
+              Used to fetch replacement posters for broken items.
+              Get a free key at
+              <a href="https://www.themoviedb.org/settings/api" target="_blank"
+                 rel="noopener">themoviedb.org/settings/api</a>.
+            </small>
+          </div>
+          <div class="form-group" style="max-width: 140px">
+            <label>Language</label>
+            <input type="text" v-model="config.tmdb.language" placeholder="en" maxlength="5" />
+          </div>
+          <label class="toggle-label" style="align-self: flex-end; padding-bottom: 10px">
+            <input type="checkbox" v-model="config.tmdb.enabled" /> Enable TMDB lookup
+          </label>
+        </div>
       </div>
 
       <!-- General -->
@@ -221,6 +248,7 @@ const activeTab = ref('connection')
 
 const config = reactive({
   plex: { base_url: '', token: '', timeout: 30 },
+  tmdb: { api_key: '', enabled: true, language: 'en', preview_size: 'w342' },
   scoring: {
     min_width: 300,
     min_height: 450,
@@ -251,6 +279,7 @@ const config = reactive({
 })
 
 const showToken = ref(false)
+const showTmdbKey = ref(false)
 const providerPriorityStr = ref('')
 const whitelistStr = ref('')
 const blacklistStr = ref('')
@@ -266,6 +295,7 @@ onMounted(async () => {
   try {
     const data = await api.getConfig()
     if (data.plex) Object.assign(config.plex, data.plex)
+    if (data.tmdb) Object.assign(config.tmdb, data.tmdb)
     if (data.scoring) Object.assign(config.scoring, data.scoring)
     if (data.app) Object.assign(config.app, data.app)
 
@@ -299,6 +329,7 @@ async function save() {
     await api.updateConfig({
       scoring: config.scoring,
       app: config.app,
+      tmdb: config.tmdb,
     })
     toast.success('Settings saved!')
   } catch (e) {

@@ -384,6 +384,40 @@ class PlexClient:
         separator = "&" if "?" in thumb else "?"
         return f"{self._server._baseurl}{thumb}{separator}X-Plex-Token={self._server._token}"
 
+    def get_tmdb_id(self, item) -> Optional[int]:
+        """Extract the TMDB id from a Plex item's external GUIDs.
+
+        Plex stores agent GUIDs like 'tmdb://72559', 'imdb://tt...', etc.
+        Returns the integer TMDB id, or None if the item has no TMDB GUID
+        (e.g. matched only against another agent).
+        """
+        try:
+            guids = getattr(item, "guids", None)
+            if not guids:
+                # Not loaded yet — reload to populate external GUIDs.
+                item.reload()
+                guids = getattr(item, "guids", None) or []
+            for g in guids:
+                gid = getattr(g, "id", "") or ""
+                if gid.startswith("tmdb://"):
+                    return int(gid.split("tmdb://", 1)[1])
+        except Exception as e:
+            logger.debug("Could not read TMDB id for '%s': %s", getattr(item, "title", "?"), e)
+        return None
+
+    def upload_poster_url(self, item, url: str) -> bool:
+        """Upload a poster to an item from an external image URL.
+
+        Used to apply TMDB posters that don't exist in Plex's poster list.
+        """
+        try:
+            item.uploadPoster(url=url)
+            logger.info("Uploaded poster for '%s' from %s", item.title, url)
+            return True
+        except Exception as e:
+            logger.error("Failed to upload poster for '%s': %s", item.title, e)
+            return False
+
     def get_item_inspect_url(self, item, width: int = 150, height: int = 225) -> str:
         """Build a SMALL, aspect-preserving URL for pixel inspection.
 
