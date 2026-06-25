@@ -57,6 +57,20 @@ class ScanItem:
     applied: bool = False
     plex_updated_at: Optional[int] = None  # Unix timestamp from Plex
 
+    def mark_applied(self, candidate: "PosterCandidate") -> None:
+        """Record that `candidate` is now the live poster on Plex.
+
+        Keeps the in-memory scan result in sync after an apply so the UI
+        reflects the new current poster (provider, score, thumbnail) without
+        waiting for a fresh scan — e.g. an "embedded" poster swapped for a
+        TMDB one stops counting as embedded/broken immediately.
+        """
+        self.applied = True
+        self.current_poster = candidate
+        self.current_poster_url = candidate.thumb_url
+        self.is_likely_broken = False
+        self.broken_reason = None
+
 
 @dataclass
 class ScanJob:

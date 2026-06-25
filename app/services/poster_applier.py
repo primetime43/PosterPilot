@@ -61,7 +61,7 @@ class PosterApplier:
             if is_tmdb_candidate(scan_item.best_candidate.rating_key):
                 upload_url = upload_url_for(scan_item.best_candidate.rating_key)
                 if self._plex.upload_poster_url(item, upload_url):
-                    scan_item.applied = True
+                    scan_item.mark_applied(scan_item.best_candidate)
                     logger.info("Applied TMDB poster for '%s'", scan_item.title)
                 else:
                     scan_item.action = ItemAction.FAILED
@@ -85,7 +85,7 @@ class PosterApplier:
 
             success = self._plex.set_poster(item, target_poster)
             if success:
-                scan_item.applied = True
+                scan_item.mark_applied(scan_item.best_candidate)
                 logger.info(
                     "Applied poster for '%s' (provider: %s, score: %.2f)",
                     scan_item.title,

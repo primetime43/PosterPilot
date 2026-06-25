@@ -475,8 +475,8 @@ async def apply_specific_candidate(
                 )
 
         scan_item.best_candidate = candidate
-        scan_item.applied = True
         scan_item.action = ItemAction.CHANGE
+        scan_item.mark_applied(candidate)
         task_mgr._save_job_cache(job)
         return {"applied": True, "title": scan_item.title}
     except Exception as e:
