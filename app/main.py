@@ -72,7 +72,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     app = FastAPI(
         title="PosterPilot",
         description="Automatic Plex poster management",
-        version="1.1.2",
+        version="1.1.3",
         lifespan=lifespan,
     )
 
