@@ -405,6 +405,7 @@ h3 {
 .summary-change .summary-value { color: var(--success); }
 .summary-uploaded .summary-value { color: #a78bfa; }
 .summary-broken .summary-value { color: #f97316; }
+.summary-embedded .summary-value { color: #38bdf8; }
 .summary-skip .summary-value { color: var(--warning); }
 .summary-locked .summary-value { color: var(--text-muted); }
 .summary-fail .summary-value { color: var(--error); }

@@ -10,6 +10,7 @@
           <option value="change">Changes</option>
           <option value="uploaded">Uploaded</option>
           <option value="broken">Broken</option>
+          <option value="embedded">Embedded</option>
           <option value="skip">Skipped</option>
           <option value="no_alternatives">No Alternatives</option>
           <option value="failed">Failed</option>
@@ -65,6 +66,12 @@
                 @click="filterAction = 'broken'; filterItems()">
           <span class="summary-value">{{ brokenCount }}</span>
           <span class="summary-label">Broken</span>
+        </button>
+        <button class="summary-item summary-embedded" :class="{ 'summary-active': filterAction === 'embedded' }"
+                @click="filterAction = 'embedded'; filterItems()"
+                title="Current poster is baked into the media file (Plex fallback)">
+          <span class="summary-value">{{ embeddedCount }}</span>
+          <span class="summary-label">Embedded</span>
         </button>
         <button class="summary-item summary-noalt" :class="{ 'summary-active': filterAction === 'no_alternatives' }"
                 @click="filterAction = 'no_alternatives'; filterItems()">
@@ -395,6 +402,7 @@ const lockedCount = ref(0)
 const uploadedCount = ref(0)
 const brokenCount = ref(0)
 const noAltCount = ref(0)
+const embeddedCount = ref(0)
 
 // Confirm dialog
 const confirmOpen = ref(false)
@@ -524,6 +532,9 @@ async function loadJob(jobId) {
     uploadedCount.value = allItems.value.filter((i) => i.is_uploaded).length
     brokenCount.value = allItems.value.filter((i) => i.is_likely_broken).length
     noAltCount.value = allItems.value.filter((i) => i.action === 'no_alternatives').length
+    embeddedCount.value = allItems.value.filter(
+      (i) => (i.current_provider || '').toLowerCase() === 'embedded'
+    ).length
     filterItems()
   } catch (e) {
     console.error('Failed to load job:', e)
@@ -538,6 +549,9 @@ function filterItems() {
     items = items.filter((i) => i.is_uploaded)
   } else if (filterAction.value === 'broken') {
     items = items.filter((i) => i.is_likely_broken)
+  } else if (filterAction.value === 'embedded') {
+    // Posters baked into the media file — Plex reports their provider as "embedded".
+    items = items.filter((i) => (i.current_provider || '').toLowerCase() === 'embedded')
   } else if (filterAction.value === 'all') {
     // Healthy/skipped items are noise here — only surface actionable ones.
     // They remain reachable via the explicit "Skipped" filter.
