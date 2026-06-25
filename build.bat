@@ -15,6 +15,14 @@ echo Installing dependencies...
 pip install -r requirements.txt
 pip install pyinstaller
 
+:: Build the frontend SPA (assets are not committed to git)
+echo.
+echo Building frontend SPA...
+pushd frontend
+call npm ci
+call npm run build
+popd
+
 :: Build
 echo.
 echo Building with PyInstaller...
