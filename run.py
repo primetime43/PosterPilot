@@ -35,13 +35,24 @@ def main() -> None:
     print(f"Starting PosterPilot on http://{host}:{port}")
     print("Press Ctrl+C to stop.\n")
 
+    frozen = getattr(sys, "frozen", False)
+
+    # Uvicorn's string-based import ("app.main:create_app") doesn't resolve
+    # inside a PyInstaller bundle, so pass the factory callable directly when
+    # frozen. The import string is only needed for dev auto-reload.
+    if frozen:
+        from app.main import create_app
+        app = create_app
+    else:
+        app = "app.main:create_app"
+
     uvicorn.run(
-        "app.main:create_app",
+        app,
         host=host,
         port=port,
         factory=True,
         log_level=config.app.log_level.lower(),
-        reload=not getattr(sys, "frozen", False),  # Auto-reload in dev only
+        reload=not frozen,  # Auto-reload in dev only
     )
 
 
