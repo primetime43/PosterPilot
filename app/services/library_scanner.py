@@ -190,6 +190,16 @@ class LibraryScanner:
             ]
             if not pool:
                 scan_item.action = ItemAction.NO_ALTERNATIVES
+                if self._config.tmdb.enabled and not self._tmdb.configured:
+                    note = (
+                        "No TMDB API key configured — add a TMDB v3 key in "
+                        "Settings → Connection to fetch replacement posters"
+                    )
+                    scan_item.broken_reason = (
+                        f"{scan_item.broken_reason} ({note})"
+                        if scan_item.broken_reason
+                        else note
+                    )
                 return scan_item
 
             scan_item.best_candidate = pool[0]
@@ -338,6 +348,19 @@ class LibraryScanner:
             "Phase 1 done: %d broken of %d scanned — resolving candidates",
             len(broken_indices), scan_count,
         )
+
+        # A broken item usually has no good alternative inside Plex, so the
+        # TMDB fallback is what actually supplies the fix. If TMDB is enabled
+        # but no API key is set, that fallback silently returns nothing and
+        # every broken item ends up NO_ALTERNATIVES — flag the real cause
+        # loudly instead of leaving the user to guess.
+        if broken_indices and self._config.tmdb.enabled and not self._tmdb.configured:
+            logger.warning(
+                "%d broken poster(s) found but TMDB is enabled with no API key "
+                "set — cannot fetch replacement posters from TMDB. Add a TMDB "
+                "v3 API key in Settings -> Connection to enable the fallback.",
+                len(broken_indices),
+            )
 
         def _resolve_at(index: int) -> None:
             self.resolve_item(items_by_index[index], results[index])
