@@ -226,15 +226,22 @@ class LibraryScanner:
             if current and current.rating_key.startswith("upload://"):
                 scan_item.is_uploaded = True
 
-            # Now that the real poster metadata is loaded, give an authoritative
-            # verdict: a Plex auto-generated frame grab is definitively broken,
-            # with a precise reason (the pixel heuristics only guessed).
+            # Authoritative BROKEN classification. Now that the real poster
+            # metadata is loaded, "broken" means the current poster is a Plex
+            # auto-generated video frame grab — a genuine missing-poster
+            # placeholder — NOT merely a poster that could be upgraded. This
+            # OVERRIDES phase 1's pixel-based guess, so a legitimately dark or
+            # oddly-shaped poster that simply has a better alternative is
+            # reported as CHANGE, not BROKEN.
             if is_plex_generated_thumb(current):
                 scan_item.is_likely_broken = True
                 scan_item.broken_reason = (
                     "Current poster is a Plex auto-generated video thumbnail "
                     "(Contents/Thumbnails/thumbN.jpg) — not real poster art"
                 )
+            else:
+                scan_item.is_likely_broken = False
+                scan_item.broken_reason = None
 
             # Pull real posters straight from TMDB and merge them in. These
             # carry width/height from TMDB metadata, so the scorer ranks
