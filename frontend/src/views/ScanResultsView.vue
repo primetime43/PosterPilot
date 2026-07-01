@@ -166,7 +166,8 @@
             <h4 :title="item.title + (item.year ? ' (' + item.year + ')' : '')">{{ item.title }}{{ item.year ? ' (' + item.year + ')' : '' }}</h4>
           </div>
           <div class="result-badges">
-            <span class="badge" :class="'badge-' + item.action">{{ actionLabel(item.action) }}</span>
+            <span v-if="item.applied" class="badge badge-applied">Applied</span>
+            <span v-else class="badge" :class="'badge-' + item.action">{{ actionLabel(item.action) }}</span>
             <span v-if="item.is_uploaded" class="badge badge-uploaded">Uploaded</span>
             <span v-if="item.is_likely_broken" class="badge badge-broken" :title="item.broken_reason">Broken</span>
             <span v-if="item.is_locked" class="badge badge-locked">Locked</span>
@@ -202,7 +203,6 @@
         </div>
         <div class="result-footer">
           <span class="text-muted text-xs">{{ item.num_candidates }} candidate{{ item.num_candidates !== 1 ? 's' : '' }}</span>
-          <span v-if="item.applied" class="text-success text-xs">Applied</span>
           <span v-if="item.error" class="error-text text-xs">{{ item.error }}</span>
           <button v-if="!item.applied" class="btn btn-outline btn-sm"
                   @click.stop="ignoreSingle(item)"
