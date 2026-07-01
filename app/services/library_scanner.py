@@ -5,7 +5,9 @@ for each media item in a Plex library.
 """
 
 import logging
+import re
 import threading
+import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Optional
 
@@ -21,6 +23,34 @@ from app.services.tmdb_client import TmdbClient
 MAX_WORKERS = 8
 
 logger = logging.getLogger("posterpilot.library_scanner")
+
+# Plex stores auto-extracted video frame grabs — its placeholder when an item
+# has no real poster — inside the media bundle at
+# ".../Contents/Thumbnails/thumbN.jpg", with no provider agent. Real artwork
+# (agent-supplied or user-uploaded) never uses that generic thumbN.jpg name,
+# so matching this path is a deterministic "no real poster" signal, far more
+# reliable than pixel heuristics.
+_GENERATED_THUMB_RE = re.compile(r"/Contents/Thumbnails/thumb\d+\.\w+", re.IGNORECASE)
+
+
+def is_plex_generated_thumb(candidate: Optional[PosterCandidate]) -> bool:
+    """True if a poster is a Plex auto-generated video frame grab.
+
+    Identified by an empty provider plus a source path under the media
+    bundle's Contents/Thumbnails directory (generic thumbN.jpg name). The
+    thumb_url is URL-encoded, so both it and the decoded rating_key are
+    checked.
+    """
+    if candidate is None:
+        return False
+    # These placeholders carry no provider agent; anything with a real
+    # provider (tmdb/tvdb/gracenote/local) is genuine artwork.
+    if candidate.provider not in (None, ""):
+        return False
+    for value in (candidate.rating_key, candidate.thumb_url):
+        if value and _GENERATED_THUMB_RE.search(urllib.parse.unquote(value)):
+            return True
+    return False
 
 
 class LibraryScanner:
@@ -79,7 +109,14 @@ class LibraryScanner:
         )
 
         try:
-            broken, reason = self._inspect_thumb(item)
+            # Deep scan (opt-in): read the real poster metadata first so a
+            # Plex auto-generated frame grab is caught by its source name with
+            # certainty — including portrait/bright ones the pixel checks miss.
+            broken, reason = False, None
+            if self._config.scoring.deep_scan:
+                broken, reason = self._detect_via_poster_source(item)
+            if not broken:
+                broken, reason = self._inspect_thumb(item)
             if broken:
                 scan_item.is_likely_broken = True
                 scan_item.broken_reason = reason
@@ -90,6 +127,22 @@ class LibraryScanner:
             logger.error("Error detecting '%s': %s", item.title, e)
 
         return scan_item
+
+    def _detect_via_poster_source(self, item) -> tuple[bool, Optional[str]]:
+        """Deep-scan detector: flag items whose selected poster is a Plex
+        auto-generated video frame grab (.../Contents/Thumbnails/thumbN.jpg).
+
+        Reads the item's poster list (posters() call) to inspect the source
+        name of the currently selected poster. Deterministic — no pixel
+        guessing — so it catches frame grabs regardless of shape or brightness.
+        """
+        current = self._extractor.find_current_poster(self._extractor.extract(item))
+        if is_plex_generated_thumb(current):
+            return True, (
+                "Current poster is a Plex auto-generated video thumbnail "
+                "(Contents/Thumbnails/thumbN.jpg) — not real poster art"
+            )
+        return False, None
 
     def _inspect_thumb(self, item) -> tuple[bool, Optional[str]]:
         """Inspect the current poster's pixels and report if it's broken.
@@ -172,6 +225,16 @@ class LibraryScanner:
             scan_item.current_poster = current
             if current and current.rating_key.startswith("upload://"):
                 scan_item.is_uploaded = True
+
+            # Now that the real poster metadata is loaded, give an authoritative
+            # verdict: a Plex auto-generated frame grab is definitively broken,
+            # with a precise reason (the pixel heuristics only guessed).
+            if is_plex_generated_thumb(current):
+                scan_item.is_likely_broken = True
+                scan_item.broken_reason = (
+                    "Current poster is a Plex auto-generated video thumbnail "
+                    "(Contents/Thumbnails/thumbN.jpg) — not real poster art"
+                )
 
             # Pull real posters straight from TMDB and merge them in. These
             # carry width/height from TMDB metadata, so the scorer ranks

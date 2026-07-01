@@ -72,6 +72,12 @@ class ScoringConfig(BaseModel):
     # Median center brightness (0-255) below which a correctly-shaped poster
     # is flagged as a likely dark video frame grab. Conservative/last-resort.
     min_brightness: int = 40
+    # Deep scan: read each item's real poster metadata (posters() call) during
+    # detection so Plex auto-generated video frame grabs are caught by their
+    # source name (.../Contents/Thumbnails/thumbN.jpg) with certainty, instead
+    # of relying only on pixel heuristics. Slower on servers whose Plex agents
+    # are slow to enumerate posters; off by default.
+    deep_scan: bool = False
 
 
 class TmdbConfig(BaseModel):
