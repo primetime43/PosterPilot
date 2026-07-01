@@ -146,16 +146,19 @@ class LibraryScanner:
         """Inspect the current poster's pixels and report if it's broken.
 
         Fetches a SMALL, aspect-preserving transcode of the current thumb
-        (a few KB) and flags landscape orientation, a far-off aspect ratio,
-        or — as a conservative last resort — a very dark image. This is the
-        only network call phase 1 makes per item, replacing the much
-        heavier posters() call the old scan did for every title.
+        (a few KB) and flags only genuinely broken shapes: landscape
+        orientation or a far-off aspect ratio (both signs of a video frame
+        or backdrop selected as poster art). This is the only network call
+        phase 1 makes per item, replacing the much heavier posters() call
+        the old scan did for every title.
 
-        Note: because phase 1 never calls posters(), provider-based
-        heuristics (e.g. flagging correctly-shaped Gracenote posters) no
-        longer run. A bad poster that happens to be portrait-shaped and
-        bright won't be flagged — but real frame grabs/backdrops are
-        landscape or wrong-shaped and are still caught here.
+        Brightness is deliberately NOT used: legitimate posters are often
+        very dark (noir, horror, night scenes), so flagging on darkness
+        produced false positives that reappeared every scan — and, because
+        an applied poster keeps its dark art, could never be cleared. Real
+        auto-generated frame grabs are caught with certainty by their source
+        name in _detect_via_poster_source; anything landscape/wrong-shaped is
+        caught here. A correctly-shaped portrait poster is left alone.
         """
         cfg = self._config.scoring
         inspect_url = self._plex.get_item_inspect_url(item)
@@ -165,7 +168,7 @@ class LibraryScanner:
         result = self._inspector.inspect_from_url(inspect_url)
         if not result:
             return False, None
-        w, h, brightness = result
+        w, h, _brightness = result
         if h <= 0:
             return False, None
 
@@ -182,13 +185,6 @@ class LibraryScanner:
             return True, (
                 f"Current poster has the wrong shape (ratio {ratio:.2f}, "
                 f"expected ~{cfg.preferred_aspect_ratio:.2f})"
-            )
-
-        # Conservative last resort: correctly-shaped but very dark.
-        if brightness < cfg.min_brightness:
-            return True, (
-                f"Current poster is very dark (brightness {brightness:.0f}/255) "
-                "— likely a dark video frame"
             )
 
         return False, None
@@ -277,6 +273,73 @@ class LibraryScanner:
             scan_item.action = ItemAction.FAILED
             scan_item.error = str(e)
             logger.error("Error resolving '%s': %s", scan_item.title, e)
+
+        return scan_item
+
+    def improve_item(self, item, scan_item: ScanItem) -> ScanItem:
+        """Opt-in upgrade pass (scoring.improve_posters): suggest the best
+        available poster for a NON-broken item whose current poster came from
+        a Plex agent and is beaten by a real TMDB poster.
+
+        Deliberately conservative to avoid the re-suggestion churn a naive
+        "recommend anything higher-scoring" rule causes:
+          * Uploaded / hand-curated posters (upload://, which includes Kometa
+            uploads and posters PosterPilot itself applied) are left alone —
+            re-suggesting them is exactly the loop this design avoids. Once a
+            change is applied it becomes an upload and is never suggested again.
+          * Posters already from a strong agent (tmdb/tvdb) are left alone —
+            they're already good, and re-ranking two TMDB images just churns.
+
+        The "best" replacement is TMDB's top community-voted poster in the
+        user's language (or textless) — the order get_posters already returns —
+        restricted to a usable portrait poster that meets the minimum size.
+        Only recommends a change; failures leave the item untouched (SKIP).
+        """
+        try:
+            ranked, current, _best = self.build_candidates(item)
+            if current is None:
+                return scan_item
+
+            # Never touch curated posters or generated-thumb placeholders here
+            # (the latter are handled as BROKEN in resolve_item).
+            if (
+                current.rating_key.startswith("upload://")
+                or is_plex_generated_thumb(current)
+            ):
+                return scan_item
+
+            provider = (current.provider or "").lower()
+            if provider in self._GOOD_PROVIDERS:
+                return scan_item  # already a strong-agent poster — leave it
+
+            cfg = self._config.scoring
+            tmdb_candidates = self._fetch_tmdb_candidates(item)
+            # get_posters returns best-first (preferred language, then highest
+            # TMDB vote); take the top one that's a usable portrait poster.
+            best = next(
+                (
+                    c for c in tmdb_candidates
+                    if c.thumb_url
+                    and c.width and c.height
+                    and c.width >= cfg.min_width
+                    and c.height >= cfg.min_height
+                    and c.width < c.height
+                ),
+                None,
+            )
+            if best is None:
+                return scan_item
+
+            # Rank the full pool so both current and best carry scores for the
+            # UI (best is the same object instance, so its score is set here).
+            combined = self._scorer.rank(ranked + tmdb_candidates)
+            scan_item.current_poster = current
+            scan_item.all_candidates = combined
+            scan_item.best_candidate = best
+            scan_item.action = ItemAction.CHANGE
+
+        except Exception as e:
+            logger.error("Error improving '%s': %s", scan_item.title, e)
 
         return scan_item
 
@@ -440,6 +503,44 @@ class LibraryScanner:
                 ]
                 for future in as_completed(resolve_futures):
                     future.result()
+
+        # ── Phase 3 (opt-in): suggest a better poster for healthy items ──
+        # Only runs when improve mode is on. Evaluates each freshly-scanned
+        # item that isn't broken or locked; improve_item skips curated and
+        # strong-agent posters internally, so this is safe to fan out wide.
+        # Costs a posters()+TMDB lookup per candidate item, hence opt-in.
+        if self._config.scoring.improve_posters:
+            improve_indices = [
+                idx for idx in items_by_index
+                if results[idx] is not None
+                and results[idx].action == ItemAction.SKIP
+                and not results[idx].is_locked
+                and not results[idx].is_likely_broken
+            ]
+            if (
+                improve_indices
+                and self._config.tmdb.enabled
+                and not self._tmdb.configured
+            ):
+                logger.warning(
+                    "Improve mode is on but TMDB has no API key set — cannot "
+                    "fetch better posters. Add a TMDB v3 API key in Settings "
+                    "-> Connection."
+                )
+            logger.info(
+                "Improve pass: evaluating %d healthy item(s)", len(improve_indices)
+            )
+
+            def _improve_at(index: int) -> None:
+                self.improve_item(items_by_index[index], results[index])
+
+            if improve_indices:
+                with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+                    improve_futures = [
+                        pool.submit(_improve_at, idx) for idx in improve_indices
+                    ]
+                    for future in as_completed(improve_futures):
+                        future.result()
 
         # Filter out any None (shouldn't happen but be safe)
         final = [r for r in results if r is not None]

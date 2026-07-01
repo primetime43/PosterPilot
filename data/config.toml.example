@@ -17,7 +17,11 @@ penalize_landscape = true
 landscape_penalty = -5.0
 # Broken-poster detection (inspects the current poster's actual pixels)
 broken_aspect_tolerance = 0.25
-min_brightness = 40
+# Improve mode (opt-in): also suggest a better poster for items whose current
+# poster came from a Plex agent (gracenote/local/embedded), using TMDB's top
+# community-voted poster. Curated/uploaded and tmdb/tvdb posters are left
+# alone. Off by default; adds a per-item TMDB lookup (slower).
+improve_posters = false
 
 [tmdb]
 # Get a free API key (v3 auth) at https://www.themoviedb.org/settings/api

@@ -154,6 +154,20 @@
           <label>Provider Priority (comma separated)</label>
           <input type="text" v-model="providerPriorityStr" placeholder="tmdb,tvdb,gracenote,local,upload" />
         </div>
+        <div class="form-row" style="margin-top: 12px">
+          <label class="toggle-label">
+            <input type="checkbox" v-model="config.scoring.improve_posters" /> Improve posters (suggest a better poster even when the current one isn't broken)
+          </label>
+        </div>
+        <small class="text-muted">
+          In addition to fixing broken posters, recommends TMDB's top
+          community-voted poster for items whose current poster came from a
+          Plex agent (gracenote / embedded / local). Curated or uploaded
+          posters (including Kometa's and ones PosterPilot applied) and
+          existing tmdb/tvdb posters are left alone, so applied changes are
+          never re-suggested. Adds a per-item TMDB lookup, so scans are
+          slower. Requires a Force Rescan to take effect.
+        </small>
       </div>
 
       <!-- Libraries -->
@@ -261,6 +275,7 @@ const config = reactive({
     provider_weight: 1.0,
     penalize_landscape: true,
     landscape_penalty: -5.0,
+    improve_posters: false,
   },
   app: {
     host: '0.0.0.0',

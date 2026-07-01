@@ -69,9 +69,13 @@ class ScoringConfig(BaseModel):
     # Max allowed deviation from preferred_aspect_ratio before the current
     # poster is flagged as broken (wrong-shaped art / frame grab).
     broken_aspect_tolerance: float = 0.25
-    # Median center brightness (0-255) below which a correctly-shaped poster
-    # is flagged as a likely dark video frame grab. Conservative/last-resort.
-    min_brightness: int = 40
+    # Improve mode (opt-in): in addition to fixing broken posters, suggest a
+    # better poster for items whose CURRENT poster came from a Plex agent
+    # (gracenote/local/embedded), using TMDB's top community-voted poster.
+    # Uploaded/hand-curated posters (incl. Kometa and ones PosterPilot applied)
+    # and strong-agent posters (tmdb/tvdb) are left alone, so applied posters
+    # are never re-suggested. Off by default; adds a per-item TMDB lookup.
+    improve_posters: bool = False
 
 
 class TmdbConfig(BaseModel):
