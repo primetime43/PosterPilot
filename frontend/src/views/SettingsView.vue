@@ -154,17 +154,6 @@
           <label>Provider Priority (comma separated)</label>
           <input type="text" v-model="providerPriorityStr" placeholder="tmdb,tvdb,gracenote,local,upload" />
         </div>
-        <div class="form-row" style="margin-top: 12px">
-          <label class="toggle-label">
-            <input type="checkbox" v-model="config.scoring.deep_scan" /> Deep scan (detect Plex auto-generated thumbnails)
-          </label>
-        </div>
-        <small class="text-muted">
-          Reads each item's real poster metadata so Plex video frame grabs
-          (Contents/Thumbnails/thumbN.jpg placeholders) are caught with
-          certainty — including ones the pixel checks miss. Slower on servers
-          with slow Plex agents. Requires a Force Rescan to take effect.
-        </small>
       </div>
 
       <!-- Libraries -->
@@ -272,7 +261,6 @@ const config = reactive({
     provider_weight: 1.0,
     penalize_landscape: true,
     landscape_penalty: -5.0,
-    deep_scan: false,
   },
   app: {
     host: '0.0.0.0',

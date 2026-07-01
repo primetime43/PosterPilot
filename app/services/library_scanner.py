@@ -109,12 +109,10 @@ class LibraryScanner:
         )
 
         try:
-            # Deep scan (opt-in): read the real poster metadata first so a
-            # Plex auto-generated frame grab is caught by its source name with
-            # certainty — including portrait/bright ones the pixel checks miss.
-            broken, reason = False, None
-            if self._config.scoring.deep_scan:
-                broken, reason = self._detect_via_poster_source(item)
+            # Read the real poster metadata first so a Plex auto-generated
+            # frame grab is caught by its source name with certainty —
+            # including portrait/bright ones the pixel checks miss.
+            broken, reason = self._detect_via_poster_source(item)
             if not broken:
                 broken, reason = self._inspect_thumb(item)
             if broken:
@@ -129,8 +127,8 @@ class LibraryScanner:
         return scan_item
 
     def _detect_via_poster_source(self, item) -> tuple[bool, Optional[str]]:
-        """Deep-scan detector: flag items whose selected poster is a Plex
-        auto-generated video frame grab (.../Contents/Thumbnails/thumbN.jpg).
+        """Flag items whose selected poster is a Plex auto-generated video
+        frame grab (.../Contents/Thumbnails/thumbN.jpg).
 
         Reads the item's poster list (posters() call) to inspect the source
         name of the currently selected poster. Deterministic — no pixel
